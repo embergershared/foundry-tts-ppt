@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/__REPO__/security/advisories/new
+    url: https://github.com/embergershared/foundry-tts-ppt/security/advisories/new
     about: Report it privately, never in a public issue (see docs/SECURITY.md).
