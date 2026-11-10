@@ -4,18 +4,19 @@
 uses it to narrate a PowerPoint deck: one audio file per slide, made from the slide's speaker
 notes, inserted in that slide.
 
-Status: draft, to review before the GitHub issues are opened (one umbrella issue, one
-sub-issue per phase, as the repository rules ask).
+Status: tracked in umbrella issue #8, one sub-issue per phase (#9 to #13). Phase 1 (#9) is
+built: see [getting-started.md](getting-started.md).
 
 ## Choices made for the whole plan
 
 | Topic | Choice | Why |
 |---|---|---|
 | Azure resource | One **Foundry resource** (`Microsoft.CognitiveServices/accounts`, kind `AIServices`) with a Foundry project, public network access | One endpoint gives both TTS engines below. Private networking isn't needed. |
-| TTS engines | **Azure Speech** (Speech SDK, SSML): HD voices (`en-US-Ava:DragonHDLatestNeural`) and MAI-Voice voices (`en-US-Harper:MAI-Voice-2.1`, preview) — no model deployment needed. **Azure OpenAI `gpt-4o-mini-tts`** (`/audio/speech`): one model deployment, the tone is steered with plain-English `instructions`. | Speech gives fine control (pauses, rate, pronunciation, styles, long text); `gpt-4o-mini-tts` is the quickest way to a natural presenter tone. The tool supports both, behind one interface, so they can be compared on the same text. |
-| Region | `eastus2` or `swedencentral` (`gpt-4o-mini-tts` to confirm in phase 1) | Checked 2026-11-10: Dragon HD voices run in eastus, eastus2, westus2, westeurope, swedencentral, southeastasia, centralindia; MAI-Voice-2.1 is served from 14 regions, both of these included. `gpt-4o-mini-tts` must also be deployable there. |
+| TTS engines | **Azure Speech** (REST API, SSML): HD voices (`en-US-Ava:DragonHDLatestNeural`) and MAI-Voice voices (`en-US-Harper:MAI-Voice-2.1`, preview) — no model deployment needed. **Azure OpenAI `gpt-4o-mini-tts`** (`/audio/speech`): one model deployment, the tone is steered with plain-English `instructions`. | Speech gives fine control (pauses, rate, pronunciation, styles, long text); `gpt-4o-mini-tts` is the quickest way to a natural presenter tone. The tool supports both, behind one interface, so they can be compared on the same text. |
+| Region | **`eastus2`** | Checked 2026-11-10: Dragon HD voices run in eastus, eastus2, westus2, westeurope, swedencentral, southeastasia, centralindia; MAI-Voice-2.1 is served from 14 regions, both of these included. `gpt-4o-mini-tts` 2025-12-15 (GA, GlobalStandard) is offered in eastus2 but **not** in swedencentral (`az cognitiveservices model list`). |
 | Infrastructure as code | Bicep, run with `azd provision` | The repository rules already use `azd` previews (`azd provision --preview`). |
 | Authentication | Microsoft Entra ID (`DefaultAzureCredential`, i.e. `az login` locally), keys off (`disableLocalAuth: true`), role **Cognitive Services User** for the user | No secrets to store. |
+| Azure calls (phase 1 decision) | **REST with `httpx` for both engines**, not the Speech SDK or the `openai` package. Speech: `https://<region>.tts.speech.microsoft.com/cognitiveservices/v1`, `Authorization: Bearer aad#<resource ID>#<Entra token>` (the format the Speech docs give for Entra tokens, as the prototype does). `gpt-4o-mini-tts`: `https://<resource>.openai.azure.com/openai/v1/audio/speech`, JSON body, plain Entra bearer token | One small HTTP dependency instead of a native SDK and a large client; the same error handling for both; offline tests with `httpx.MockTransport`. |
 | App | Python 3.13 CLI in `src/foundry_tts/`, tests in `tests/` (pytest, offline: the Azure clients are stubbed), ruff | Matches `.github/instructions/python.instructions.md`. |
 | Config | `.env` (gitignored) with `.env.example` committed; read in one module (`config.py`) | Repository rules. |
 | Audio format | MP3, 24 kHz, mono (`audio-24khz-160kbitrate-mono-mp3` / `mp3`) | PowerPoint plays MP3 everywhere; small files. |
@@ -87,7 +88,7 @@ README and the rules).
    [Tuning ideas](#tuning-ideas) below), each with a ready-to-run command.
 
 **Done when:** `az login`, then
-`python -m foundry_tts --file samples/intro.txt --engine speech` and the same with
+`foundry-tts --file notes.txt --engine speech` and the same with
 `--engine openai` each write an MP3 that plays; unit tests (SSML building, input reading,
 config, engine selection with stubbed clients) pass; ruff passes;
 `docs/getting-started.md` explains setup from zero.
@@ -172,7 +173,7 @@ These go into `docs/tts-tuning.md` in phase 1, then become profile settings in p
 | Language | Speech | `<lang xml:lang="fr-FR">` in a multilingual voice | Decks that mix languages |
 | Instructions | `gpt-4o-mini-tts` | Plain-English direction of tone, pace and emotion | "Calm, confident conference presenter; clear diction; brief pause after each sentence." |
 | Voice | `gpt-4o-mini-tts` | Alloy, Ash, Ballad, Coral, Echo, Sage, Shimmer, Verse, Marin, Cedar | Compare Marin, Cedar and Coral |
-| Speed | `gpt-4o-mini-tts` | `speed` 0.25–4.0 | 0.95 |
+| Pace | `gpt-4o-mini-tts` | Ask for it in `instructions` (the tool sends no `speed` value) | "Slightly slower than normal" |
 | Output format | both | Sample rate and bitrate | 24 kHz mono MP3; 48 kHz only for video |
 | Text hygiene | both | Notes written for reading aloud: no bullet fragments, spelled-out symbols ("→", "&", "%") | Phase 2 markup cleans the common ones |
 
@@ -187,7 +188,6 @@ example) is refused with a clear error when it's loaded, rather than sent and si
 - Is desktop PowerPoint on Windows always available where the tool runs? (Phase 4 decision.)
 - Once the Python tool reaches phase 5, is the PowerShell prototype kept (Windows users without
   Python) or removed?
-- Subscription and region to use for phase 1.
 
 ## Sources
 
