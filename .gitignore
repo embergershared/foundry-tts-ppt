@@ -60,3 +60,6 @@ logs/
 *.log
 Thumbs.db
 .DS_Store
+
+# ---- foundry-tts audio output ----
+output/

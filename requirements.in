@@ -1,0 +1,6 @@
+# Runtime dependencies of foundry-tts (src/foundry_tts). Lock with:
+#   .venv\Scripts\python scripts/lock_requirements.py
+azure-identity
+httpx
+mutagen
+python-dotenv
