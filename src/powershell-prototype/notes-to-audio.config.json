@@ -1,0 +1,29 @@
+{
+  "speech": {
+    "auth": "Entra",
+    "resourceId": "/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.CognitiveServices/accounts/<speech-or-foundry-resource>",
+    "region": "eastus",
+    "endpoint": "",
+    "voice": "en-US-Ava:DragonHDLatestNeural",
+    "language": "en-US",
+    "style": "",
+    "rate": "",
+    "outputFormat": "audio-24khz-96kbitrate-mono-mp3",
+    "paragraphBreakMs": 400,
+    "tokenRefreshMinutes": 45
+  },
+  "slides": {
+    "audioShapeName": "NotesNarration",
+    "paddingSeconds": 1,
+    "offSlideMarginPoints": 20
+  },
+  "video": {
+    "enabled": true,
+    "verticalResolution": 1080,
+    "framesPerSecond": 30,
+    "quality": 85,
+    "defaultSlideSeconds": 5,
+    "timeoutMinutes": 60,
+    "pollSeconds": 5
+  }
+}
