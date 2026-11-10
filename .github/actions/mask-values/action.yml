@@ -1,0 +1,23 @@
+# Masks values in the rest of the job's logs and job summary: each line, each GUID inside the
+# values, and each key and string of a JSON document (mask-values.sh). Run it first in a job
+# that can print identifiers. Pass secrets or values read at run time: a repository variable
+# passed here is printed, unmasked, in this step's header before it is masked.
+name: Mask values
+description: Masks values, the GUIDs inside them and the keys and strings of a JSON document.
+inputs:
+  values:
+    description: Values to mask, one per line, or a JSON document.
+    required: true
+  min-length:
+    description: Shorter lines, keys and strings are not masked (masking "dev" would hide it everywhere).
+    required: false
+    default: "4"
+runs:
+  using: composite
+  steps:
+    - name: Mask values
+      shell: bash
+      env:
+        VALUES: ${{ inputs.values }}
+        MASK_MIN_LENGTH: ${{ inputs.min-length }}
+      run: bash "$GITHUB_ACTION_PATH/mask-values.sh" <<<"$VALUES"

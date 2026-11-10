@@ -1,0 +1,249 @@
+# Build, lint and test on GitHub-hosted runners. Each stack runs only when the repository
+# has it:
+#   .NET   -> a *.slnx / *.sln / *.csproj is tracked
+#   Python -> requirements-dev.lock or requirements.lock is tracked
+# "CI result" always reports and fails when any job failed: make it the one required check.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to a PR cancels that PR's run still in progress; runs on main are never
+# cancelled, so each main commit is tested.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  PIP_DISABLE_PIP_VERSION_CHECK: 1
+  ACTIONLINT_VERSION: 1.7.12
+  ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+
+jobs:
+  detect:
+    name: Detect stacks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      dotnet: ${{ steps.stacks.outputs.dotnet }}
+      dotnet-target: ${{ steps.stacks.outputs.dotnet-target }}
+      python: ${{ steps.stacks.outputs.python }}
+      python-lock: ${{ steps.stacks.outputs.python-lock }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: stacks
+        env:
+          DOTNET_SOLUTION: ${{ vars.DOTNET_SOLUTION }}
+        run: |
+          # The .NET target: repository variable DOTNET_SOLUTION, else the shallowest
+          # *.slnx / *.sln, else the shallowest *.csproj.
+          shallowest() { git ls-files -- "$@" | awk -F/ '{print NF "\t" $0}' | sort -n | head -1 | cut -f2; }
+          target="$DOTNET_SOLUTION"
+          [ -n "$target" ] || target=$(shallowest '*.slnx' '*.sln')
+          [ -n "$target" ] || target=$(shallowest '*.csproj')
+          echo "dotnet=$([ -n "$target" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "dotnet-target=$target" >> "$GITHUB_OUTPUT"
+
+          lock=""
+          for f in requirements-dev.lock requirements.lock; do
+            if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then lock="$f"; break; fi
+          done
+          echo "python=$([ -n "$lock" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "python-lock=$lock" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "| Stack | Detected from |"
+            echo "|---|---|"
+            echo "| .NET | ${target:-not detected} |"
+            echo "| Python | ${lock:-not detected} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  workflows:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: actionlint (and shellcheck on run scripts)
+        run: |
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSLo "$RUNNER_TEMP/$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
+          echo "${ACTIONLINT_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+
+      # Fictitious values only. The masks are compared, never printed as is: the runner would
+      # act on ::add-mask:: lines.
+      - name: Mask values action (shellcheck and self-test)
+        env:
+          MASK_MIN_LENGTH: 4
+        run: |
+          script=.github/actions/mask-values/mask-values.sh
+          shellcheck "$script"
+          input='{"alice@contoso.com":{"ids":["00000000-0000-0000-0000-000000000001","dev"]},"rg":"/subscriptions/00000000-0000-0000-0000-000000000002/resourceGroups/rg-50%"}'
+          expected=$(cat <<'MASKS'
+          ::add-mask::/subscriptions/00000000-0000-0000-0000-000000000002/resourceGroups/rg-50%25
+          ::add-mask::00000000-0000-0000-0000-000000000001
+          ::add-mask::00000000-0000-0000-0000-000000000002
+          ::add-mask::alice@contoso.com
+          ::add-mask::{"alice@contoso.com":{"ids":["00000000-0000-0000-0000-000000000001","dev"]},"rg":"/subscriptions/00000000-0000-0000-0000-000000000002/resourceGroups/rg-50%25"}
+          MASKS
+          )
+          actual=$(bash "$script" <<<"$input")
+          differences=$(diff <(LC_ALL=C sort <<<"$actual") <(LC_ALL=C sort <<<"$expected") || true)
+          if [ -n "$differences" ]; then
+            echo "${differences//::add-mask::/add-mask: }"
+            echo "::error::mask-values.sh: the masks above differ from the expected ones (< got, > expected)"
+            exit 1
+          fi
+
+  package-age:
+    name: Package age gate
+    needs: detect
+    if: needs.detect.outputs.dotnet == 'true' || needs.detect.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Standard library only: any Python 3 works (a .NET-only repository has no .python-version).
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Every locked package is at least 7 days old
+        run: python scripts/check_package_age.py --min-age-days 7
+
+  dotnet:
+    name: .NET build and test
+    needs: detect
+    if: needs.detect.outputs.dotnet == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TARGET: ${{ needs.detect.outputs.dotnet-target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json', '**/Directory.Packages.props', 'global.json') }}
+
+      # Locked mode (Directory.Build.props): the restore fails when a lock file is missing or
+      # out of date, instead of resolving new versions in CI.
+      - name: Restore
+        run: dotnet restore "$TARGET"
+
+      - name: Format (whitespace, style and analyzers from .editorconfig)
+        run: dotnet format "$TARGET" --verify-no-changes --no-restore
+
+      - name: Build
+        run: dotnet build "$TARGET" --no-restore -c Release
+
+      - name: Test
+        run: dotnet test "$TARGET" --no-build -c Release --logger trx --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dotnet-test-results
+          path: TestResults/**/*.trx
+          if-no-files-found: warn
+          retention-days: 14
+
+  python:
+    name: Python lint and test
+    needs: detect
+    if: needs.detect.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LOCK: ${{ needs.detect.outputs.python-lock }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements*.lock
+
+      # Exact pins with sha256 hashes (scripts/lock_requirements.py), resolved for every
+      # platform and the Python of .python-version.
+      - name: Install the locked packages
+        run: python -m pip install --require-hashes -r "$LOCK"
+
+      - name: Ruff lint and format check
+        run: |
+          if ! python -m ruff --version >/dev/null 2>&1; then
+            echo "::warning::ruff is not in $LOCK: add it to requirements-dev.in and lock again"
+            exit 0
+          fi
+          python -m ruff check --output-format=github .
+          python -m ruff format --check .
+
+      - name: Tests
+        run: |
+          if ! python -m pytest --version >/dev/null 2>&1; then
+            echo "::warning::pytest is not in $LOCK: add it to requirements-dev.in and lock again"
+            exit 0
+          fi
+          status=0
+          python -m pytest -q --junitxml=test-results/pytest.xml || status=$?
+          # pytest exits 5 when it collected no tests: say so, don't fail the build for it.
+          if [ "$status" -eq 5 ]; then echo "::warning::pytest collected no tests"; exit 0; fi
+          exit "$status"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: python-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  result:
+    name: CI result
+    if: always()
+    needs: [detect, workflows, package-age, dotnet, python]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          failed=$(echo "$RESULTS" | jq -r '[to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key] | join(", ")')
+          if [ -n "$failed" ]; then
+            echo "::error::Failed or cancelled: $failed"
+            exit 1
+          fi

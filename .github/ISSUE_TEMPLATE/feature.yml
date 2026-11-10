@@ -1,0 +1,29 @@
+name: Feature or change
+description: Something that should work differently, or a new capability.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Title: what will be true, e.g. "Statement import: detect a statement already saved for the same closing date".
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happens today and why it is a problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What should be true when this is done, as bullets.
+      value: |
+        -
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Constraints, links, data or database changes to plan for.

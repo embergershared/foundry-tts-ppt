@@ -1,0 +1,38 @@
+# Dependabot proposes updates no sooner than 7 days after a release (cooldown), like the
+# package age gate. Its PRs are exempt from the PR rules (no issue, dependabot/ branch).
+# Uncomment the ecosystems the repository uses. Python dependencies are refreshed with
+# scripts/lock_requirements.py instead (hash-locked, age-checked).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      # template:start
+      # The template checks daily so its pins are current when a repository is created from it:
+      # Dependabot checks a new repository right away. scripts/Initialize-Repo.ps1 sets weekly.
+      interval: daily
+      # template:end
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  # - package-ecosystem: nuget
+  #   directory: /
+  #   schedule:
+  #     interval: weekly
+  #     day: monday
+  #   cooldown:
+  #     default-days: 7
+  #   groups:
+  #     nuget-minor-and-patch:
+  #       update-types: [minor, patch]
+
+  # - package-ecosystem: docker
+  #   directory: /
+  #   schedule:
+  #     interval: weekly
+  #     day: monday
+  #   cooldown:
+  #     default-days: 7

@@ -1,0 +1,32 @@
+# Git normalizes line endings: LF in the repository, the platform's ending in the checkout.
+* text=auto
+
+# Files run or read inside Linux (containers, CI runners, servers) keep LF everywhere.
+*.sh text eol=lf
+*.bash text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.conf text eol=lf
+*.example text eol=lf
+Dockerfile text eol=lf
+*.Dockerfile text eol=lf
+.dockerignore text eol=lf
+requirements*.in text eol=lf
+requirements*.lock text eol=lf
+
+# Visual Studio solution files keep CRLF.
+*.sln text eol=crlf
+
+# Binary files: never diffed or converted.
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.xlsx binary
+*.docx binary

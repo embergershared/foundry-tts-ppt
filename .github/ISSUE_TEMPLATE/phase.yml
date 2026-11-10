@@ -1,0 +1,37 @@
+name: Phase of a planned feature
+description: One phase or step of an umbrella issue, linked to it as a sub-issue.
+title: "<Feature>, phase <n>: <title>"
+labels: [phase]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        After creating it, link it to the umbrella as a sub-issue (in phase order) and add it to the umbrella's checklist:
+        ```bash
+        id=$(gh api repos/<owner>/<repo>/issues/<this issue> --jq .id)
+        gh api -X POST repos/<owner>/<repo>/issues/<umbrella>/sub_issues -F sub_issue_id=$id
+        ```
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What this phase delivers on its own.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: What is true when this phase's PR merges, as bullets.
+      value: |
+        -
+    validations:
+      required: true
+  - type: input
+    id: umbrella
+    attributes:
+      label: Part of
+      description: The umbrella issue.
+      placeholder: "#82"
+    validations:
+      required: true

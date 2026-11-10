@@ -1,0 +1,23 @@
+# Keep the Docker build context small and free of secrets and local data.
+.git
+.github
+.vscode
+.vs
+**/bin
+**/obj
+**/TestResults
+**/.venv
+**/venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/node_modules
+**/*.db
+**/*.db-*
+**/.env
+**/.env.*
+!**/.env.example
+backups
+artifacts
+docs
+*.md

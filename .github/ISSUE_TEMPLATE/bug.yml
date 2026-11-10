@@ -1,0 +1,35 @@
+name: Bug
+description: Something that doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository is public. Leave out secrets, customer names, tenant or subscription IDs,
+        internal URLs, and real data: describe them instead. A security problem goes to
+        **Security → Report a vulnerability**, not here.
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: What you did and what you saw (error text, screenshot, log lines).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What should have happened.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Image version, release, or commit where it happens.

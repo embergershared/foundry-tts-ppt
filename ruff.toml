@@ -1,0 +1,8 @@
+# Ruff lint and format settings for every Python file in the repository (CI runs
+# `ruff check` and `ruff format --check` when ruff is in requirements-dev.lock).
+target-version = "py313"
+line-length = 99
+extend-exclude = [".venv", "venv", "artifacts"]
+
+[lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "A", "SIM", "LOG", "RET"]
