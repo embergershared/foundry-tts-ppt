@@ -13,7 +13,7 @@ sub-issue per phase, as the repository rules ask).
 |---|---|---|
 | Azure resource | One **Foundry resource** (`Microsoft.CognitiveServices/accounts`, kind `AIServices`) with a Foundry project, public network access | One endpoint gives both TTS engines below. Private networking isn't needed. |
 | TTS engines | **Azure Speech** (Speech SDK, SSML): HD voices (`en-US-Ava:DragonHDLatestNeural`) and MAI-Voice voices (`en-US-Harper:MAI-Voice-2.1`, preview) — no model deployment needed. **Azure OpenAI `gpt-4o-mini-tts`** (`/audio/speech`): one model deployment, the tone is steered with plain-English `instructions`. | Speech gives fine control (pauses, rate, pronunciation, styles, long text); `gpt-4o-mini-tts` is the quickest way to a natural presenter tone. The tool supports both, behind one interface, so they can be compared on the same text. |
-| Region | `eastus2` or `swedencentral` (to confirm in phase 1 against the current region tables) | Both list MAI-Voice and HD voices; `gpt-4o-mini-tts` must also be deployable there. |
+| Region | `eastus2` or `swedencentral` (`gpt-4o-mini-tts` to confirm in phase 1) | Checked 2026-11-10: Dragon HD voices run in eastus, eastus2, westus2, westeurope, swedencentral, southeastasia, centralindia; MAI-Voice-2.1 is served from 14 regions, both of these included. `gpt-4o-mini-tts` must also be deployable there. |
 | Infrastructure as code | Bicep, run with `azd provision` | The repository rules already use `azd` previews (`azd provision --preview`). |
 | Authentication | Microsoft Entra ID (`DefaultAzureCredential`, i.e. `az login` locally), keys off (`disableLocalAuth: true`), role **Cognitive Services User** for the user | No secrets to store. |
 | App | Python 3.13 CLI in `src/foundry_tts/`, tests in `tests/` (pytest, offline: the Azure clients are stubbed), ruff | Matches `.github/instructions/python.instructions.md`. |
@@ -24,12 +24,30 @@ sub-issue per phase, as the repository rules ask).
 
 | # | Phase | Delivers |
 |---|---|---|
-| 0 | Initialize the repository | Template placeholders filled, .NET stack removed |
+| 0 | Initialize the repository | Template placeholders filled, .NET stack removed (PR #2) |
 | 1 | Text to speech tool | Foundry resource + model, CLI: text or file in → audio file out, tuning guide |
 | 2 | Voice tuning profiles | Named, reusable voice settings; pronunciation fixes; markup for pauses |
 | 3 | Read a deck | Speaker notes of each slide → one audio file per slide |
 | 4 | Narrate a deck | Audio inserted in each slide, plays when the slide shows |
 | 5 | Hands-free deck | Slides advance when their narration ends; re-runs only redo changed slides; optional video export |
+
+### What the PowerShell prototype already shows
+
+A PowerShell prototype ([docs/powershell-prototype.md](powershell-prototype.md),
+`src/powershell-prototype/`) does phases 3 to 5 with option B (PowerPoint COM) and the Speech
+REST API. Its tests pass on Windows with desktop PowerPoint, using generated tones instead of
+Azure; **the Azure call itself hasn't been tested yet**. Use it as the reference behavior:
+
+| Topic | What the prototype does, tested | Phase |
+|---|---|---|
+| Notes text | PowerPoint returns paragraphs separated by CR (tested) and line breaks inside a paragraph as a vertical tab, char 11 (handled, but not tested through PowerPoint). They become pauses and spaces in the SSML. Check what `python-pptx` returns for the same deck | 3 |
+| Pauses | One `<break time="400ms"/>` between notes paragraphs (Dragon HD supports `<break>`) | 2, 3 |
+| Rerun cache | The exact SSML sent is saved as `slide-NNN.ssml`; the audio is reused only when the new SSML is byte-identical. Hashing the final SSML catches note, voice, style, lexicon and markup changes in one value: use it as the manifest hash | 3, 5 |
+| Insert audio | `Shapes.AddMediaObject2(file, LinkToFile=false, SaveWithDocument=true, left, top)`, placed just right of the slide (`left = SlideWidth + 20`), named so a rerun can find and replace it | 4 |
+| Auto-play | `AnimationSettings.PlaySettings.PlayOnEntry = true`, `HideWhileNotPlaying = true` | 4 |
+| Slide timing | `SlideShowTransition.AdvanceOnTime = true`, `AdvanceTime = ceil(MediaFormat.Length ms / 1000) + paddingSeconds` | 5 |
+| Video | `Presentation.CreateVideo(path, UseTimingsAndNarrations=true, DefaultSlideDuration, VertResolution, FramesPerSecond, Quality)` runs in the background: poll `CreateVideoStatus` (3 = done, 4 = failed) with a timeout. A 3-slide test deck gave an 11 s MP4 with sound | 5 |
+| Safety | The source deck is opened read-only without a window and saved under a new name; PowerPoint is quit only if the tool started it | 4 |
 
 ### Phase 0: Initialize the repository
 
@@ -96,7 +114,10 @@ shows how to use them.
   `--include-hidden`.
 - A `manifest.json` next to the audio: slide number, notes hash, voice, duration, file.
 - Long notes: Speech handles up to 10 minutes per request; past that, the notes are split on
-  paragraph boundaries and the parts joined.
+  paragraph boundaries and the parts joined. HD voices are real-time only (no batch synthesis
+  API), so splitting is the only way for them.
+- The manifest hash is taken over the final SSML (or the `gpt-4o-mini-tts` request), not the raw
+  notes, so a voice, profile or lexicon change also counts as a change (as in the prototype).
 
 **Done when** a sample deck (made by a test, no real content) gives one audio file per slide
 with notes, and the manifest is right.
@@ -112,7 +133,11 @@ with notes, and the manifest is right.
     the slide's `<p:timing>` (auto-play) itself. Needs checking in PowerPoint by hand.
   - **B. PowerPoint automation (COM, `pywin32`)**: `Shapes.AddMediaObject2`, play settings
     set through PowerPoint's own object model; most faithful, but Windows + desktop
-    PowerPoint only, and can't be tested in CI.
+    PowerPoint only, and can't be tested in CI. **Already proven** by the PowerShell
+    prototype (see the table above).
+  - Either way, a deck narrated by the prototype is the reference for option A: unzip it to
+    see the exact media parts, relationships and `<p:timing>` that PowerPoint itself writes,
+    and compare the tool's output with it in tests.
 - Re-running replaces the audio the tool inserted before (shapes it inserted are tagged), and
   leaves other media alone.
 
@@ -125,7 +150,8 @@ its narration on its own in Slide Show, and tests check the package structure.
   manifest, so the deck can run as a kiosk or self-running presentation.
 - Incremental runs: only slides whose notes, profile or lexicon changed are re-synthesized
   (hash in the manifest), to save time and cost.
-- Optional: export to MP4 (PowerPoint `CreateVideo` through COM, Windows only).
+- Optional: export to MP4 (PowerPoint `CreateVideo` through COM, Windows only; asynchronous, see
+  the prototype table above). Slides without notes need a default duration in the video.
 - Optional: `azd down` instructions and a cost note in the docs.
 
 **Done when** a narrated deck runs start to end in Slide Show without a click, and a re-run
@@ -138,11 +164,11 @@ These go into `docs/tts-tuning.md` in phase 1, then become profile settings in p
 | Lever | Engine | What it does | Starting point for slide narration |
 |---|---|---|---|
 | Voice and model | Speech | HD (`…:DragonHDLatestNeural`) is natural and stable; MAI-Voice-2.1 (preview) is the most expressive, made for long-form narration | Try `en-US-Ava:DragonHDLatestNeural` and `en-US-Harper:MAI-Voice-2.1` |
-| Speaking style | Speech | `<mstts:express-as style="…">`; MAI voices offer `narrator`, `educational`, `audiobook` | `narrator` or `educational` |
-| Rate and pitch | Speech | `<prosody rate="-5%" pitch="+0%">` | Slightly slower than default (−5 to −10%) for slides |
-| Pauses | Speech | `<break time="600ms"/>`, `<mstts:silence>` at sentence and paragraph ends | 300–500 ms between paragraphs |
-| HD temperature | Speech (HD) | `parameters="temperature=0.6"`: lower is steadier from slide to slide | 0.5–0.7 for a consistent voice across a deck |
-| Pronunciation | Speech | `<sub alias="…">`, `<phoneme>`, `<say-as interpret-as="characters">`, custom lexicon | Acronyms and product names |
+| Speaking style | Speech | `<mstts:express-as style="…">`; MAI-Voice Harper, Grant and Sage (en-US) offer `narrator`, `educational`, `audiobook`. Dragon HD: its SSML support table says no `express-as`, while an example on the same page uses one: test before relying on it. Dragon HD Omni supports styles | `narrator` or `educational` (MAI-Voice) |
+| Rate and pitch | Speech (not HD) | `<prosody rate="-5%" pitch="+0%">`. **No HD voice supports `<prosody>`** (Dragon HD or Omni): use a MAI-Voice or standard voice when speed matters | Slightly slower than default (−5 to −10%) for slides |
+| Pauses | Speech | `<break time="600ms"/>` (Dragon HD yes, Omni no); `<mstts:silence>` (no HD voice) | 300–500 ms `<break>` between paragraphs (the prototype uses 400 ms) |
+| HD temperature | Speech (HD) | `parameters="temperature=0.6"`: lower is steadier from slide to slide (Dragon HD default 1.0) | 0.5–0.7 for a consistent voice across a deck |
+| Pronunciation | Speech | `<sub alias="…">`, `<phoneme>`, `<say-as interpret-as="characters">`, custom lexicon. Dragon HD: lexicon alias entries only, no `<phoneme>` on Omni; `parameters="enhancePronunciation=true"` helps with acronyms and product names | Acronyms and product names |
 | Language | Speech | `<lang xml:lang="fr-FR">` in a multilingual voice | Decks that mix languages |
 | Instructions | `gpt-4o-mini-tts` | Plain-English direction of tone, pace and emotion | "Calm, confident conference presenter; clear diction; brief pause after each sentence." |
 | Voice | `gpt-4o-mini-tts` | Alloy, Ash, Ballad, Coral, Echo, Sage, Shimmer, Verse, Marin, Cedar | Compare Marin, Cedar and Coral |
@@ -150,17 +176,25 @@ These go into `docs/tts-tuning.md` in phase 1, then become profile settings in p
 | Output format | both | Sample rate and bitrate | 24 kHz mono MP3; 48 kHz only for video |
 | Text hygiene | both | Notes written for reading aloud: no bullet fragments, spelled-out symbols ("→", "&", "%") | Phase 2 markup cleans the common ones |
 
+SSML support differs by voice family
+([HD voices: supported SSML](https://learn.microsoft.com/azure/ai-services/speech-service/high-definition-voices#supported-and-unsupported-ssml-elements-for-azure-speech-hd-voices)).
+A profile that sets something its voice doesn't support (rate or pitch on an HD voice, for
+example) is refused with a clear error when it's loaded, rather than sent and silently ignored.
+
 ## Open questions
 
 - Which language(s) will the decks use? (Changes the voices to try first.)
 - Is desktop PowerPoint on Windows always available where the tool runs? (Phase 4 decision.)
+- Once the Python tool reaches phase 5, is the PowerShell prototype kept (Windows users without
+  Python) or removed?
 - Subscription and region to use for phase 1.
 
 ## Sources
 
 Checked on Microsoft Learn on 2026-11-10:
 [Speech synthesis how-to](https://learn.microsoft.com/azure/ai-services/speech-service/how-to-speech-synthesis),
-[HD voices](https://learn.microsoft.com/azure/ai-services/speech-service/high-definition-voices),
+[HD voices](https://learn.microsoft.com/azure/ai-services/speech-service/high-definition-voices)
+(and its supported SSML table),
 [MAI-Voice in Azure Speech](https://learn.microsoft.com/azure/ai-services/speech-service/mai-voices),
 [Foundry Models sold by Azure, audio models](https://learn.microsoft.com/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure#audio-models),
 [Choose a speech technology](https://learn.microsoft.com/azure/architecture/data-guide/ai-services/speech-recognition-generation).
