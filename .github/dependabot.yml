@@ -7,11 +7,8 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      # template:start
-      # The template checks daily so its pins are current when a repository is created from it:
-      # Dependabot checks a new repository right away. scripts/Initialize-Repo.ps1 sets weekly.
-      interval: daily
-      # template:end
+      interval: weekly
+      day: monday
     cooldown:
       default-days: 7
     groups:

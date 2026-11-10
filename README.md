@@ -1,19 +1,6 @@
-# __PROJECT_NAME__
+# foundry-tts-ppt
 
-__DESCRIPTION__
-
-<!-- template:start -->
-> [!IMPORTANT]
-> **This is embergershared/repo-template**, the starting point for new embergershared
-> projects. Create a repository with **Use this template**, clone it, then run once
-> (PowerShell, in its folder):
-> ```powershell
-> ./scripts/Initialize-Repo.ps1 -Description '<one line about the project>' -Stacks dotnet,python
-> ```
-> It fills in the placeholders, removes the stack you don't use, sets the repository and its
-> security features up, and opens the first issue and PR. See
-> [docs/template.md](docs/template.md) for everything the template contains.
-<!-- template:end -->
+Text-to-speech narration for PowerPoint decks with Microsoft Foundry
 
 > [!NOTE]
 > This is a personal project, shared as is to help others. It is not an official Microsoft

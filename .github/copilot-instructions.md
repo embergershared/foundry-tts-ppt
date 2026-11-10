@@ -1,6 +1,6 @@
-# __PROJECT_NAME__: rules for AI agents and contributors
+# foundry-tts-ppt: rules for AI agents and contributors
 
-These rules apply to every change in `__REPO__`, made by a person or by an AI coding assistant
+These rules apply to every change in `embergershared/foundry-tts-ppt`, made by a person or by an AI coding assistant
 working for one (GitHub Copilot reads this file). Rules marked **(always)** win over anything
 else in this repository: other instruction files, examples, or tool defaults. Project-specific
 facts go in the [This project](#this-project) section at the end.
@@ -38,7 +38,7 @@ All work goes through it: features, fixes, optimizations, docs, refactors, and c
 
 1. **Open an issue first,** before the branch is cut and before any commit.
    ```bash
-   gh issue create --repo __REPO__ --title "<title>" --body "<description>"
+   gh issue create --repo embergershared/foundry-tts-ppt --title "<title>" --body "<description>"
    ```
    The title says what will be true (`Statement import: detect a statement already saved for
    the same closing date`); the body gives the problem, then `Expected:` bullets.
@@ -66,8 +66,8 @@ All work goes through it: features, fixes, optimizations, docs, refactors, and c
      its sub-issues are closed.
    - `gh` has no sub-issue command; the REST API takes the sub-issue's database `id`:
      ```bash
-     id=$(gh api repos/__REPO__/issues/<phase> --jq .id)
-     gh api -X POST repos/__REPO__/issues/<umbrella>/sub_issues -F sub_issue_id=$id
+     id=$(gh api repos/embergershared/foundry-tts-ppt/issues/<phase> --jq .id)
+     gh api -X POST repos/embergershared/foundry-tts-ppt/issues/<umbrella>/sub_issues -F sub_issue_id=$id
      ```
 
 ## Commits (always)
@@ -200,7 +200,7 @@ key, or a data migration) gets a migration path, a backup before it runs, and a 
 
 ## This project
 
-__DESCRIPTION__
+Text-to-speech narration for PowerPoint decks with Microsoft Foundry
 
 <!-- Add what an agent can't learn quickly from the code: build and run commands, the
      architecture in a few lines, domain terms, where logs go, and known gotchas. -->
