@@ -51,7 +51,7 @@ squash-merged) is kept and named: check it, then `git branch -D <name>`.
 | `.github/workflows/pr-rules.yml` | Branch name (no owner prefix from a fork), base branch, linked issue, no AI attribution, commit style warnings. |
 | `.github/dependabot.yml` | GitHub Actions updates with a 7-day cooldown, weekly (daily in the template); NuGet and Docker ready to uncomment. |
 | `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/` | PR body (What, Database, Tests) and issue forms (feature, bug, phase). |
-| `README.md` | Project page: the description, the "personal project, not an official Microsoft product" note, then a table of contents of the pages. Nothing else goes there. |
+| `README.md` | Project page, kept short: **Overview** (what the project does and for whom, the description first), **Quick start** (the few commands from a clone to a first run), a table of contents of the pages, the license, then the "personal project, not an official Microsoft product" note. Nothing else goes there. In the template, the description sits under the title and the note above Overview; `Initialize-Repo.ps1` moves them, and stops before changing anything if the README lacks the description, the note or the Overview section. |
 | `docs/getting-started.md` | Build, run and test the project locally (to fill in). |
 | `docs/SECURITY.md`, `docs/SUPPORT.md`, `docs/CONTRIBUTING.md`, `docs/CODE_OF_CONDUCT.md` | Private vulnerability reporting, as-is support, how to contribute, Contributor Covenant. GitHub finds them in `docs/` as it does at the root. |
 | `.editorconfig`, `.gitattributes`, `.gitignore`, `.dockerignore` | Editor rules, line endings (LF for Linux files), ignored secrets/databases/build output. |

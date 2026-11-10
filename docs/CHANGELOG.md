@@ -8,3 +8,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Repository created from [embergershared/repo-template](https://github.com/embergershared/repo-template).
+
+### Changed
+- README: it opens with an Overview (what the project does) and a Quick start; the personal-project note is at the bottom (#5).
