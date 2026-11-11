@@ -1,0 +1,34 @@
+# Settings of the foundry-tts command (src/foundry_tts). Values that depend on the Azure
+# environment (resource ID, region, endpoint, deployment) come from environment variables or
+# .env instead: see .env.example. Command-line options override the values below.
+
+[speech]
+# Azure Speech voice. HD voices: "<locale>-<Name>:DragonHDLatestNeural"; MAI-Voice (preview):
+# "<locale>-<Name>:MAI-Voice-2.1". Try voices first in the Foundry playground.
+voice = "en-US-Ava:DragonHDLatestNeural"
+language = "en-US"
+# An MP3 (audio-*-mp3) or WAV (riff-*) format of the Speech REST API.
+output_format = "audio-24khz-160kbitrate-mono-mp3"
+# Pause between paragraphs of the text (<break>, supported by Dragon HD voices).
+paragraph_break_ms = 400
+# Regional text to speech endpoint; {region} is replaced by FOUNDRY_REGION.
+endpoint_template = "https://{region}.tts.speech.microsoft.com/cognitiveservices/v1"
+
+[openai]
+# gpt-4o-mini-tts voices listed by Azure: alloy, ash, ballad, coral, echo, sage, shimmer, verse,
+# marin, cedar.
+voice = "marin"
+# Plain-English direction of tone and pace (gpt-4o-mini-tts only).
+instructions = "Calm, confident conference presenter. Clear diction, a natural pace, and a brief pause after each sentence."
+# mp3, wav, flac, opus or aac.
+response_format = "mp3"
+# Longest input the /audio/speech API accepts, in characters.
+max_input_chars = 4096
+
+[http]
+timeout_seconds = 120
+user_agent = "foundry-tts"
+
+[output]
+# Where audio goes when --out isn't given (relative to the current folder).
+folder = "output"
