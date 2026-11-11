@@ -41,7 +41,7 @@ Azure; **the Azure call itself hasn't been tested yet**. Use it as the reference
 
 | Topic | What the prototype does, tested | Phase |
 |---|---|---|
-| Notes text | PowerPoint returns paragraphs separated by CR (tested) and line breaks inside a paragraph as a vertical tab, char 11 (handled, but not tested through PowerPoint). They become pauses and spaces in the SSML. Check what `python-pptx` returns for the same deck | 3 |
+| Notes text | PowerPoint returns paragraphs separated by CR (tested) and line breaks inside a paragraph as a vertical tab, char 11. They become pauses and spaces in the SSML. `python-pptx` returns the same text with LF between paragraphs: checked through PowerPoint in #11 | 3 |
 | Pauses | One `<break time="400ms"/>` between notes paragraphs (Dragon HD supports `<break>`) | 2, 3 |
 | Rerun cache | The exact SSML sent is saved as `slide-NNN.ssml`; the audio is reused only when the new SSML is byte-identical. Hashing the final SSML catches note, voice, style, lexicon and markup changes in one value: use it as the manifest hash | 3, 5 |
 | Insert audio | `Shapes.AddMediaObject2(file, LinkToFile=false, SaveWithDocument=true, left, top)`, placed just right of the slide (`left = SlideWidth + 20`), named so a rerun can find and replace it | 4 |
@@ -116,19 +116,35 @@ shows how to use them.
 
 ### Phase 3: Read a deck
 
-- `foundry-tts deck synth deck.pptx`: reads each slide's speaker notes with `python-pptx`,
-  applies the phase 2 markup and profile, and writes `output/<deck>/slide-01.mp3`, …
-- Slides without notes are skipped and listed; hidden slides are skipped unless
-  `--include-hidden`.
-- A `manifest.json` next to the audio: slide number, notes hash, voice, duration, file.
-- Long notes: Speech handles up to 10 minutes per request; past that, the notes are split on
-  paragraph boundaries and the parts joined. HD voices are real-time only (no batch synthesis
-  API), so splitting is the only way for them.
-- The manifest hash is taken over the final SSML (or the `gpt-4o-mini-tts` request), not the raw
-  notes, so a voice, profile or lexicon change also counts as a change (as in the prototype).
+Built in #11 (see [getting-started.md](getting-started.md#5-narrate-a-decks-speaker-notes)):
+
+- `foundry-tts deck synth deck.pptx` writes `output/<deck>/slide-01.mp3`, … and
+  `manifest.json`, with one profile (`--profile`, and the same overrides as for text).
+- **Labeled decks** ([decision 0001](decisions/0001-read-labeled-decks-through-powerpoint.md)):
+  an OLE file instead of a ZIP (a sensitivity label, a password, or an old .ppt) is detected from
+  its first bytes and read through desktop PowerPoint (COM, `pywin32`), read-only and without a
+  window; other decks with `python-pptx`. `--reader` forces one or the other.
+- Notes cleanups, planned for phase 2 and built here: `(Click)` cues become a pause
+  (`[deck] cue_pause_ms`), emoji and double quotes are dropped, a bullet becomes its own
+  paragraph, an en-dash range is read "10 to 15", a space before punctuation is removed. Each
+  one is counted in the log and the manifest.
+- Slides without notes (or only `//` comments) and hidden slides (unless `--include-hidden`) are
+  skipped and listed in the manifest with their reason.
+- Long text, for decks and plain text alike: more than `[speech] max_chars_per_request` (6,000
+  characters, about 6 minutes; Azure Speech cuts audio at 10 minutes per request) or the 4,096
+  characters of `gpt-4o-mini-tts` is split between paragraphs, else sentences, and the MP3 parts
+  are joined (a later part's ID3 tag is dropped). Checked against Azure for both engines.
+- The manifest hash is the sha256 of the exact request bodies sent (the SSML, or the
+  `gpt-4o-mini-tts` JSON), so a notes, profile, lexicon or settings change changes it. Phase 5
+  uses it to skip unchanged slides.
+- Everything is read and checked before the first Azure call; the manifest is written last, so it
+  always describes a complete run.
 
 **Done when** a sample deck (made by a test, no real content) gives one audio file per slide
-with notes, and the manifest is right.
+with notes, and the manifest is right: `tests/decks.py` builds a Contoso deck with the quirks of a
+real one, a hidden slide, a slide without notes and one with only a comment. A labeled file is
+detected in a test, and a real labeled deck was read through PowerPoint by hand (15 slides, every
+cleanup used).
 
 ### Phase 4: Narrate a deck
 

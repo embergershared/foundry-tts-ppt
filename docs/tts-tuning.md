@@ -99,6 +99,10 @@ For a deck's own words, keep a separate file with a `[lexicon]` table and add it
 Stress (`*word*`) isn't offered: Azure's `<emphasis>` works on three standard voices only, none of
 the HD or MAI voices.
 
+Speaker notes read from a deck (`foundry-tts deck synth`) are also cleaned of presenter cues:
+`(Click)` becomes a pause, emoji, bullets and quotes are dropped, `10–15` is read "10 to 15". See
+[getting-started.md](getting-started.md#5-narrate-a-decks-speaker-notes).
+
 ## 5. What each voice family honors
 
 The docs and the service disagree, so this was measured on 2026-11-11 (eastus2) by comparing
