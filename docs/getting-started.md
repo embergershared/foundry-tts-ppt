@@ -33,7 +33,7 @@ see [supply-chain.md](supply-chain.md).
 |---|---|
 | Foundry resource (`Microsoft.CognitiveServices/accounts`, kind `AIServices`, S0) | Custom subdomain, **keys off** (Microsoft Entra ID only), public network access |
 | Foundry project `proj-tts` | — |
-| Model deployment `gpt-4o-mini-tts` (version 2025-12-15, GlobalStandard, capacity 1) | Only for `--engine openai` |
+| Model deployment `gpt-4o-mini-tts` (version 2025-12-15, GlobalStandard, capacity 1) | Only for openai profiles (`marin-presenter`) |
 | Role *Cognitive Services User* for you, on the Foundry resource | Lets the tool call Speech and the model |
 
 Azure Speech voices (HD, MAI-Voice) need no deployment. Use **eastus2**: it has the Dragon HD
@@ -71,16 +71,16 @@ To use an existing Foundry resource instead, copy `.env.example` to `.env` and f
 ```powershell
 .venv\Scripts\foundry-tts --text "Welcome to the quarterly review."
 .venv\Scripts\foundry-tts --file .\notes.txt --out .\intro.mp3
-Get-Content .\notes.txt | .venv\Scripts\foundry-tts --engine openai
+Get-Content .\notes.txt | .venv\Scripts\foundry-tts --profile marin-presenter
 ```
 
 | Option | What it does |
 |---|---|
-| `--text`, `--file`, `--ssml`, or a pipe | The text to say (a file is read as UTF-8). `--ssml` sends a hand-written SSML file as is (speech engine only) |
-| `--engine speech` (default) | Azure Speech voices, from SSML the tool builds: paragraphs are escaped and separated by a short pause |
-| `--engine openai` | The `gpt-4o-mini-tts` deployment; `--instructions` sets the tone (at most 4096 characters of text) |
-| `--voice`, `--language` | Override the voice and language of `foundry-tts.toml` |
-| `--out`, `--overwrite` | Where the audio goes (default: `output\<time>-<engine>.mp3`, gitignored); an existing file is kept unless `--overwrite` |
+| `--text`, `--file`, `--ssml`, or a pipe | The text to say (a file is read as UTF-8). `--ssml` sends a hand-written SSML file as is (speech profiles only) |
+| `--profile <name>` | The voice profile from `foundry-tts.toml` (default `ava-hd`). Repeat it to compare profiles: one file each. `--list-profiles` lists them |
+| `--voice`, `--language`, `--instructions` | Override the profile for this run (`--instructions`: openai profiles, which take at most 4096 characters of text) |
+| `--lexicon <file>` | Adds a deck's own pronunciation list (a `[lexicon]` table) to the settings file's |
+| `--out`, `--overwrite` | Where the audio goes (default: `output\<time>-<profile>.mp3`, gitignored; a folder when comparing profiles); existing files are kept unless `--overwrite` |
 | `--save-ssml` | Also saves the SSML sent to Speech next to the audio, to reuse or tune it |
 | `--verbose` | DEBUG logs |
 

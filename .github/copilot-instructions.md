@@ -210,7 +210,9 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
 - **Tool:** `src/foundry_tts/` (Python 3.13), the `foundry-tts` command: text (`--text`, `--file`,
   `--ssml`, or a pipe) → audio file. `cli.py` (options, flow), `config.py` (the only reader of
   `foundry-tts.toml` and the `FOUNDRY_*` variables / `.env`), `engines.py` (REST calls with
-  `httpx`), `ssml.py`, `audio_file.py`, `logs.py` (JSON lines on stderr).
+  `httpx`), `profiles.py` (voice profiles, voice families and what each honors),
+  `markup.py` (`//` comments, `[pause 1s]`, the pronunciation lexicon), `ssml.py`,
+  `audio_file.py`, `logs.py` (JSON lines on stderr).
 - **Engines:** `speech` (Azure Speech REST, SSML, `Bearer aad#<resource ID>#<Entra token>`) and
   `openai` (`gpt-4o-mini-tts`, `/openai/v1/audio/speech`). Entra ID only: the resource has keys
   off.
