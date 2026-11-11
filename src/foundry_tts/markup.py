@@ -64,8 +64,12 @@ def _segments(text: str) -> Paragraph:
     return segments
 
 
-def parse(text: str) -> list[Paragraph]:
-    """Paragraphs of text and pauses, with comment lines removed and spaces collapsed."""
+def parse(text: str, *, allow_empty: bool = False) -> list[Paragraph]:
+    """Paragraphs of text and pauses, with comment lines removed and spaces collapsed.
+
+    Text with nothing to say (empty, or only comments and pauses) is refused, or gives an empty
+    list with `allow_empty` (speaker notes that are only comments).
+    """
     paragraphs = []
     for block in _PARAGRAPH_SPLIT.split(text):
         lines = (line.strip() for line in block.split("\v"))
@@ -74,6 +78,8 @@ def parse(text: str) -> list[Paragraph]:
         if segments:
             paragraphs.append(segments)
     if not any(isinstance(segment, str) for paragraph in paragraphs for segment in paragraph):
+        if allow_empty:
+            return []
         raise TtsError("The text is empty (or only comments and pauses); there is nothing to say.")
     return paragraphs
 

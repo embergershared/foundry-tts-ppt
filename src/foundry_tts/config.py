@@ -21,12 +21,18 @@ class SpeechSettings:
     output_format: str
     paragraph_break_ms: int
     endpoint_template: str
+    max_chars_per_request: int
 
 
 @dataclass(frozen=True)
 class OpenAiSettings:
     response_format: str
     max_input_chars: int
+
+
+@dataclass(frozen=True)
+class DeckSettings:
+    cue_pause_ms: int
 
 
 @dataclass(frozen=True)
@@ -50,6 +56,7 @@ class AzureSettings:
 class Settings:
     speech: SpeechSettings
     openai: OpenAiSettings
+    deck: DeckSettings
     http: HttpSettings
     output_folder: Path
     azure: AzureSettings
@@ -197,6 +204,7 @@ def load_settings(
     defaults = _section(data, "defaults", config_path)
     speech = _section(data, "speech", config_path)
     openai = _section(data, "openai", config_path)
+    deck = _section(data, "deck", config_path)
     http = _section(data, "http", config_path)
     output = _section(data, "output", config_path)
 
@@ -214,10 +222,14 @@ def load_settings(
             output_format=_value(speech, "output_format", str, where("speech")),
             paragraph_break_ms=_value(speech, "paragraph_break_ms", int, where("speech")),
             endpoint_template=_value(speech, "endpoint_template", str, where("speech")),
+            max_chars_per_request=_value(speech, "max_chars_per_request", int, where("speech")),
         ),
         openai=OpenAiSettings(
             response_format=_value(openai, "response_format", str, where("openai")),
             max_input_chars=_value(openai, "max_input_chars", int, where("openai")),
+        ),
+        deck=DeckSettings(
+            cue_pause_ms=_value(deck, "cue_pause_ms", int, where("deck")),
         ),
         http=HttpSettings(
             timeout_seconds=_value(http, "timeout_seconds", float, where("http")),
