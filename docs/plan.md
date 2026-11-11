@@ -18,7 +18,7 @@ sub-issue per phase, as the repository rules ask).
 | Authentication | Microsoft Entra ID (`DefaultAzureCredential`, i.e. `az login` locally), keys off (`disableLocalAuth: true`), role **Cognitive Services User** for the user | No secrets to store. |
 | App | Python 3.13 CLI in `src/foundry_tts/`, tests in `tests/` (pytest, offline: the Azure clients are stubbed), ruff | Matches `.github/instructions/python.instructions.md`. |
 | Config | `.env` (gitignored) with `.env.example` committed; read in one module (`config.py`) | Repository rules. |
-| Audio format | MP3, 24 kHz, mono (`audio-24khz-160kbitrate-mono-mp3` / `mp3`) | PowerPoint plays MP3 everywhere; small files. |
+| Audio format | MP3, 24 kHz, mono (`audio-24khz-160kbitrate-mono-mp3` / `mp3`) | PowerPoint plays MP3 everywhere; small files. For long decks, `audio-24khz-96kbitrate-mono-mp3` or `-48kbitrate-` cut the size (20 minutes of narration is about 24 MB at 160 kbps): compare by ear in phase 4. |
 
 ## Phases
 
@@ -48,6 +48,31 @@ Azure; **the Azure call itself hasn't been tested yet**. Use it as the reference
 | Slide timing | `SlideShowTransition.AdvanceOnTime = true`, `AdvanceTime = ceil(MediaFormat.Length ms / 1000) + paddingSeconds` | 5 |
 | Video | `Presentation.CreateVideo(path, UseTimingsAndNarrations=true, DefaultSlideDuration, VertResolution, FramesPerSecond, Quality)` runs in the background: poll `CreateVideoStatus` (3 = done, 4 = failed) with a timeout. A 3-slide test deck gave an 11 s MP4 with sound | 5 |
 | Safety | The source deck is opened read-only without a window and saved under a new name; PowerPoint is quit only if the tool started it | 4 |
+
+### What a real sample deck shows
+
+A real deck, read on 2026-11-11 (15 slides, every slide with notes, none hidden). It is kept
+**outside the repository**: its content is confidential, so nothing from it (file, notes, names,
+audio made from it) is committed, put in an issue or PR, or quoted in the docs.
+
+| Finding | What it means | Phase |
+|---|---|---|
+| The file is encrypted by a **Microsoft Purview sensitivity label** (an OLE compound file holding an `EncryptedPackage` and a DRM transform, not a ZIP) | `python-pptx` can't open it: it reads as a corrupt file. Desktop PowerPoint opens it read-only through COM, as the prototype does. Labeled decks have to be detected and either read through PowerPoint or refused with a clear message | 3, 4 |
+| Notes come back from PowerPoint with paragraphs split by CR and **line breaks inside a paragraph as a vertical tab (char 11)**, plus empty paragraphs and double spaces | Confirms what the prototype handled but never tested. `split_paragraphs` already turns them into paragraphs and spaces | 3 |
+| Notes are written for a presenter: `(Click)` cues, an emoji, `- ` bullets, stray `“` `"` quotes and a trailing ` .` | Read aloud as written today: the `(Click)` cues and the emoji would be spoken. Cleanups for phase 2 markup (below) | 2 |
+| Acronyms spelled out (`IRS`, `W-2`), one said as a word, `&` inside acronyms (`Q&A`, `R&D`), number ranges with an en dash (`10–15`), an email address | Lexicon and `say-as` cases for phase 2 | 2 |
+| About 18,500 characters of notes, roughly 3,000 words: **about 20 minutes of audio**. The longest slide's notes are 2,585 characters (about 2.6 minutes) | Under the 4,096-character `gpt-4o-mini-tts` limit and the 10-minute Speech limit: no splitting needed. At 160 kbps, 20 minutes of MP3 adds about 24 MB to the narrated deck | 3, 4 |
+| No audio, animations, sections or slide timings yet (16:9, 960 × 540 pt) | A clean target for phases 4 and 5 | 4, 5 |
+
+How it's used:
+
+- **Local acceptance deck:** its path is set in a gitignored place (`.env` or a local config),
+  and the tests that use it are opt-in and skipped in CI. It is the only check of a labeled deck.
+- **CI:** a synthetic Contoso deck, built by a test, copies its quirks (CR and vertical tab
+  breaks, empty paragraphs, `(Click)` cues, an emoji, `- ` bullets, stray quotes, acronyms, an
+  en-dash range, an email address) and adds what it lacks: a hidden slide and a slide without
+  notes. A deck that `python-pptx` writes can't be labeled, so CI covers the detection of a
+  labeled file (from its header), not the reading of one.
 
 ### Phase 0: Initialize the repository
 
@@ -101,6 +126,12 @@ config, engine selection with stubbed clients) pass; ruff passes;
   URL for Speech.
 - Light markup that a presenter can type in plain notes and the tool turns into SSML:
   `[pause 1s]`, `*stress*`, and lines starting with `//` skipped (comments to self).
+- Notes cleanups for what presenters already type (see the sample deck above): `(Click)` cues
+  become a pause instead of being spoken, emoji are dropped, a leading `- ` or `•` is removed,
+  stray quotes are dropped, an en-dash range (`10–15`) is read as "10 to 15". Each cleanup is
+  logged, so a surprise can be traced.
+- Lexicon cases to cover: an acronym spelled out (`IRS`), one said as a word, `&` inside an
+  acronym (`Q&A` → "Q and A"), an email address.
 - `--compare`: same text, several profiles → one file each, to pick by ear.
 
 **Done when** profiles, lexicon and markup are covered by tests, and `docs/tts-tuning.md`
@@ -110,6 +141,11 @@ shows how to use them.
 
 - `foundry-tts deck synth deck.pptx`: reads each slide's speaker notes with `python-pptx`,
   applies the phase 2 markup and profile, and writes `output/<deck>/slide-01.mp3`, …
+- **Sensitivity-labeled decks** (an encrypted OLE file instead of a ZIP) are detected from
+  the file header before `python-pptx` opens them. **Decision to make at the start of this
+  phase** (logged in `docs/decisions/`): read them through PowerPoint COM on Windows (the
+  prototype's way, recommended since real decks may be labeled), or refuse them with a clear
+  message that names the label as the reason. Either way, no "corrupt file" error.
 - Slides without notes are skipped and listed; hidden slides are skipped unless
   `--include-hidden`.
 - A `manifest.json` next to the audio: slide number, notes hash, voice, duration, file.
@@ -120,7 +156,10 @@ shows how to use them.
   notes, so a voice, profile or lexicon change also counts as a change (as in the prototype).
 
 **Done when** a sample deck (made by a test, no real content) gives one audio file per slide
-with notes, and the manifest is right.
+with notes, and the manifest is right. That deck has the quirks listed in
+[What a real sample deck shows](#what-a-real-sample-deck-shows), a hidden slide and a slide
+without notes. A labeled file is detected in a test, and the local acceptance deck has been run
+by hand.
 
 ### Phase 4: Narrate a deck
 
@@ -135,6 +174,9 @@ with notes, and the manifest is right.
     set through PowerPoint's own object model; most faithful, but Windows + desktop
     PowerPoint only, and can't be tested in CI. **Already proven** by the PowerShell
     prototype (see the table above).
+  - **Labeled decks weigh on this choice:** option A can neither read nor write an encrypted
+    deck, so with A, a labeled deck needs B anyway (or is refused). Check that a narrated copy
+    saved by PowerPoint keeps the source deck's label.
   - Either way, a deck narrated by the prototype is the reference for option A: unzip it to
     see the exact media parts, relationships and `<p:timing>` that PowerPoint itself writes,
     and compare the tool's output with it in tests.
@@ -184,7 +226,10 @@ example) is refused with a clear error when it's loaded, rather than sent and si
 ## Open questions
 
 - Which language(s) will the decks use? (Changes the voices to try first.)
-- Is desktop PowerPoint on Windows always available where the tool runs? (Phase 4 decision.)
+- Is desktop PowerPoint on Windows always available where the tool runs? (Phase 3 and 4
+  decisions.) Real decks may carry a sensitivity label, which only PowerPoint can open.
+- Does a narrated copy saved by PowerPoint keep the source deck's sensitivity label, and do the
+  label's rights let the user save a copy at all? (Phase 4; check on the local acceptance deck.)
 - Once the Python tool reaches phase 5, is the PowerShell prototype kept (Windows users without
   Python) or removed?
 - Subscription and region to use for phase 1.
