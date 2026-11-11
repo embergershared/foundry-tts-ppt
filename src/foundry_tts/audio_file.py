@@ -34,8 +34,9 @@ def read_text(*, text: str | None, file: Path | None, stdin: TextIO) -> str:
     return source
 
 
-def default_output_path(folder: Path, engine: str, extension: str, now: datetime) -> Path:
-    return folder / f"{now:%Y%m%d-%H%M%S}-{engine}{extension}"
+def default_output_path(folder: Path, label: str, extension: str, now: datetime) -> Path:
+    """<folder>/<yyyyMMdd-HHmmss>-<label><extension>, e.g. output/20261111-090000-ava-hd.mp3."""
+    return folder / f"{now:%Y%m%d-%H%M%S}-{label}{extension}"
 
 
 def write_audio(audio: bytes, path: Path, *, overwrite: bool) -> None:

@@ -13,6 +13,7 @@ import httpx
 
 from foundry_tts.config import Settings
 from foundry_tts.errors import TtsError
+from foundry_tts.profiles import ENGINES, OPENAI, SPEECH  # noqa: F401 (re-exported)
 
 log = logging.getLogger(__name__)
 
@@ -21,10 +22,6 @@ TOKEN_SCOPE = "https://cognitiveservices.azure.com/.default"
 ERROR_BODY_CHARS = 500
 
 TokenProvider = Callable[[], str]
-
-SPEECH = "speech"
-OPENAI = "openai"
-ENGINES = (SPEECH, OPENAI)
 
 # File extension of each output format.
 _OPENAI_EXTENSIONS = {
