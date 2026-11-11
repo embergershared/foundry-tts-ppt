@@ -2,24 +2,22 @@
 # environment (resource ID, region, endpoint, deployment) come from environment variables or
 # .env instead: see .env.example. Command-line options override the values below.
 
+[defaults]
+# Profile used when --profile isn't given.
+profile = "ava-hd"
+
 [speech]
-# Azure Speech voice. HD voices: "<locale>-<Name>:DragonHDLatestNeural"; MAI-Voice (preview):
-# "<locale>-<Name>:MAI-Voice-2.1". Try voices first in the Foundry playground.
-voice = "en-US-Ava:DragonHDLatestNeural"
+# Language of the SSML when a profile doesn't set one.
 language = "en-US"
 # An MP3 (audio-*-mp3) or WAV (riff-*) format of the Speech REST API.
 output_format = "audio-24khz-160kbitrate-mono-mp3"
-# Pause between paragraphs of the text (<break>, supported by Dragon HD voices).
+# Pause between paragraphs of the text (<break>). MAI-Voice voices ignore <break>, so they get
+# none.
 paragraph_break_ms = 400
 # Regional text to speech endpoint; {region} is replaced by FOUNDRY_REGION.
 endpoint_template = "https://{region}.tts.speech.microsoft.com/cognitiveservices/v1"
 
 [openai]
-# gpt-4o-mini-tts voices listed by Azure: alloy, ash, ballad, coral, echo, sage, shimmer, verse,
-# marin, cedar.
-voice = "marin"
-# Plain-English direction of tone and pace (gpt-4o-mini-tts only).
-instructions = "Calm, confident conference presenter. Clear diction, a natural pace, and a brief pause after each sentence."
 # mp3, wav, flac, opus or aac.
 response_format = "mp3"
 # Longest input the /audio/speech API accepts, in characters.
@@ -32,3 +30,38 @@ user_agent = "foundry-tts"
 [output]
 # Where audio goes when --out isn't given (relative to the current folder).
 folder = "output"
+
+# ---- Voice profiles: pick one with --profile <name>, or several to compare them ----
+# engine = "speech" (Azure Speech voices) or "openai" (the gpt-4o-mini-tts deployment).
+# Speech settings: voice, language, style (<mstts:express-as>), rate and pitch (<prosody>, e.g.
+# "-5%", "+2st"), temperature (0 to 1, HD voices only: lower is steadier).
+# openai settings: voice (alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin, cedar) and
+# instructions (plain-English direction of tone and pace).
+# Try voices first in the Foundry playground: see docs/tts-tuning.md.
+
+[profiles.ava-hd]
+engine = "speech"
+voice = "en-US-Ava:DragonHDLatestNeural"
+
+[profiles.ava-hd-steady]
+engine = "speech"
+voice = "en-US-Ava:DragonHDLatestNeural"
+temperature = 0.6
+rate = "-5%"
+
+[profiles.harper-narrator]
+engine = "speech"
+voice = "en-US-Harper:MAI-Voice-2.1"
+style = "narrator"
+
+[profiles.marin-presenter]
+engine = "openai"
+voice = "marin"
+instructions = "Calm, confident conference presenter. Clear diction, a natural pace, and a brief pause after each sentence."
+
+# ---- Pronunciation: how to say a word or acronym, for every profile ----
+# Whole words, case-sensitive. Speech voices get <sub alias="…">; the openai engine gets the
+# replacement text. A deck-specific list can be added with --lexicon <file> (a [lexicon] table).
+[lexicon]
+AKS = "A K S"
+SaaS = "sass"
