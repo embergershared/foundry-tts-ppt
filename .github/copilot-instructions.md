@@ -208,18 +208,26 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
      architecture in a few lines, domain terms, where logs go, and known gotchas. -->
 
 - **Tool:** `src/foundry_tts/` (Python 3.13), the `foundry-tts` command: text (`--text`, `--file`,
-  `--ssml`, or a pipe) → audio file. `cli.py` (options, flow), `config.py` (the only reader of
+  `--ssml`, or a pipe) → audio file; `foundry-tts deck synth deck.pptx` → one audio file per
+  slide + `manifest.json` (`deck_synth.py`; `deck.py` reads slides with `python-pptx`,
+  `powerpoint.py` through PowerPoint COM for labeled decks; `notes.py` cleans presenter cues;
+  `speak.py` builds, splits and sends the requests). `cli.py` (options, flow), `config.py` (the only reader of
   `foundry-tts.toml` and the `FOUNDRY_*` variables / `.env`), `engines.py` (REST calls with
-  `httpx`), `ssml.py`, `audio_file.py`, `logs.py` (JSON lines on stderr).
+  `httpx`), `profiles.py` (voice profiles, voice families and what each honors),
+  `markup.py` (`//` comments, `[pause 1s]`, the pronunciation lexicon), `ssml.py`,
+  `audio_file.py`, `logs.py` (JSON lines on stderr).
 - **Engines:** `speech` (Azure Speech REST, SSML, `Bearer aad#<resource ID>#<Entra token>`) and
   `openai` (`gpt-4o-mini-tts`, `/openai/v1/audio/speech`). Entra ID only: the resource has keys
   off.
 - **Infra:** `infra/` (Bicep) + `azure.yaml`, run with `azd`. Region `eastus2` (has the HD and
   MAI voices and `gpt-4o-mini-tts`). `azd provision --preview` is free to run; ask before
   `azd provision` or `azd down`. Set `AZURE_PRINCIPAL_ID` first or no role is assigned. Where the
-  Bicep download is blocked: `$env:AZD_BICEP_TOOL_PATH = "$HOME\.azureinicep.exe"`.
+  Bicep download is blocked: `$env:AZD_BICEP_TOOL_PATH = "$HOME\.azure\bin\bicep.exe"`.
 - **Setup and checks:** see `docs/getting-started.md` (`.venv`, `pip install --no-deps
   --no-build-isolation -e .`, ruff, pytest). Tests are offline (`httpx.MockTransport`, fake
-  token).
+  token). Test decks come from `tests/decks.py` (synthetic Contoso, no real content);
+  `tests/test_powerpoint.py` is opt-in (`FOUNDRY_TTS_POWERPOINT_TESTS=1`, Windows + PowerPoint).
+- **Real decks are confidential:** never copy one, its notes, file name or audio into the repo,
+  an issue, a PR or a commit. Read one only locally (`FOUNDRY_TTS_ACCEPTANCE_DECK`).
 - **Prototype:** `src/powershell-prototype/` narrates a deck through PowerPoint COM (Windows);
   reference behavior for phases 3 to 5 of `docs/plan.md`.

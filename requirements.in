@@ -4,3 +4,5 @@ azure-identity
 httpx
 mutagen
 python-dotenv
+python-pptx
+pywin32; sys_platform == "win32"

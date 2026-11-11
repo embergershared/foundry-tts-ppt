@@ -41,7 +41,7 @@ Azure; **the Azure call itself hasn't been tested yet**. Use it as the reference
 
 | Topic | What the prototype does, tested | Phase |
 |---|---|---|
-| Notes text | PowerPoint returns paragraphs separated by CR (tested) and line breaks inside a paragraph as a vertical tab, char 11 (handled, but not tested through PowerPoint). They become pauses and spaces in the SSML. Check what `python-pptx` returns for the same deck | 3 |
+| Notes text | PowerPoint returns paragraphs separated by CR (tested) and line breaks inside a paragraph as a vertical tab, char 11. They become pauses and spaces in the SSML. `python-pptx` returns the same text with LF between paragraphs: checked through PowerPoint in #11 | 3 |
 | Pauses | One `<break time="400ms"/>` between notes paragraphs (Dragon HD supports `<break>`) | 2, 3 |
 | Rerun cache | The exact SSML sent is saved as `slide-NNN.ssml`; the audio is reused only when the new SSML is byte-identical. Hashing the final SSML catches note, voice, style, lexicon and markup changes in one value: use it as the manifest hash | 3, 5 |
 | Insert audio | `Shapes.AddMediaObject2(file, LinkToFile=false, SaveWithDocument=true, left, top)`, placed just right of the slide (`left = SlideWidth + 20`), named so a rerun can find and replace it | 4 |
@@ -95,33 +95,56 @@ config, engine selection with stubbed clients) pass; ruff passes;
 
 ### Phase 2: Voice tuning profiles
 
-- `profiles.toml`: named profiles (engine, voice, rate, pitch, style, HD temperature,
-  `instructions` for `gpt-4o-mini-tts`), chosen with `--profile narrator`.
-- Pronunciation: a lexicon file (acronyms and product names, e.g. "AKS" → "A K S",
-  "Azure" spelled as said) applied with SSML `<sub alias>` / `<phoneme>`, or a custom lexicon
-  URL for Speech.
-- Light markup that a presenter can type in plain notes and the tool turns into SSML:
-  `[pause 1s]`, `*stress*`, and lines starting with `//` skipped (comments to self).
-- `--compare`: same text, several profiles → one file each, to pick by ear.
+Built in #10 (see [tts-tuning.md](tts-tuning.md)). What changed from the first draft:
+
+- Profiles live in `foundry-tts.toml` (`[profiles.<name>]`, default in `[defaults] profile`),
+  so `config.py` stays the only reader of settings. `--engine` is gone: the engine is a profile
+  setting.
+- Pronunciation: a `[lexicon]` table in the same file, plus `--lexicon <file>` for a deck's own
+  words; speech voices get `<sub alias>`, the openai engine the replacement text. `<phoneme>`
+  stays for hand-written SSML.
+- Markup: `//` comment lines and `[pause …]`. `*stress*` was dropped: `<emphasis>` works on
+  three standard voices only.
+- Comparing: `--profile` repeated (one file per profile), instead of a separate `--compare`.
+- What each voice family honors was **measured** against the service, because the docs
+  disagree with it: `<prosody>` works on Dragon HD and Omni, `<break>` works on Omni, and
+  MAI-Voice ignores `<break>`. So only temperature on non-HD voices is refused; pauses for MAI
+  voices are left out with a warning.
 
 **Done when** profiles, lexicon and markup are covered by tests, and `docs/tts-tuning.md`
 shows how to use them.
 
 ### Phase 3: Read a deck
 
-- `foundry-tts deck synth deck.pptx`: reads each slide's speaker notes with `python-pptx`,
-  applies the phase 2 markup and profile, and writes `output/<deck>/slide-01.mp3`, …
-- Slides without notes are skipped and listed; hidden slides are skipped unless
-  `--include-hidden`.
-- A `manifest.json` next to the audio: slide number, notes hash, voice, duration, file.
-- Long notes: Speech handles up to 10 minutes per request; past that, the notes are split on
-  paragraph boundaries and the parts joined. HD voices are real-time only (no batch synthesis
-  API), so splitting is the only way for them.
-- The manifest hash is taken over the final SSML (or the `gpt-4o-mini-tts` request), not the raw
-  notes, so a voice, profile or lexicon change also counts as a change (as in the prototype).
+Built in #11 (see [getting-started.md](getting-started.md#5-narrate-a-decks-speaker-notes)):
+
+- `foundry-tts deck synth deck.pptx` writes `output/<deck>/slide-01.mp3`, … and
+  `manifest.json`, with one profile (`--profile`, and the same overrides as for text).
+- **Labeled decks** ([decision 0001](decisions/0001-read-labeled-decks-through-powerpoint.md)):
+  an OLE file instead of a ZIP (a sensitivity label, a password, or an old .ppt) is detected from
+  its first bytes and read through desktop PowerPoint (COM, `pywin32`), read-only and without a
+  window; other decks with `python-pptx`. `--reader` forces one or the other.
+- Notes cleanups, planned for phase 2 and built here: `(Click)` cues become a pause
+  (`[deck] cue_pause_ms`), emoji and double quotes are dropped, a bullet becomes its own
+  paragraph, an en-dash range is read "10 to 15", a space before punctuation is removed. Each
+  one is counted in the log and the manifest.
+- Slides without notes (or only `//` comments) and hidden slides (unless `--include-hidden`) are
+  skipped and listed in the manifest with their reason.
+- Long text, for decks and plain text alike: more than `[speech] max_chars_per_request` (6,000
+  characters, about 6 minutes; Azure Speech cuts audio at 10 minutes per request) or the 4,096
+  characters of `gpt-4o-mini-tts` is split between paragraphs, else sentences, and the MP3 parts
+  are joined (a later part's ID3 tag is dropped). Checked against Azure for both engines.
+- The manifest hash is the sha256 of the exact request bodies sent (the SSML, or the
+  `gpt-4o-mini-tts` JSON), so a notes, profile, lexicon or settings change changes it. Phase 5
+  uses it to skip unchanged slides.
+- Everything is read and checked before the first Azure call; the manifest is written last, so it
+  always describes a complete run.
 
 **Done when** a sample deck (made by a test, no real content) gives one audio file per slide
-with notes, and the manifest is right.
+with notes, and the manifest is right: `tests/decks.py` builds a Contoso deck with the quirks of a
+real one, a hidden slide, a slide without notes and one with only a comment. A labeled file is
+detected in a test, and a real labeled deck was read through PowerPoint by hand (15 slides, every
+cleanup used).
 
 ### Phase 4: Narrate a deck
 
@@ -166,7 +189,7 @@ These go into `docs/tts-tuning.md` in phase 1, then become profile settings in p
 |---|---|---|---|
 | Voice and model | Speech | HD (`…:DragonHDLatestNeural`) is natural and stable; MAI-Voice-2.1 (preview) is the most expressive, made for long-form narration | Try `en-US-Ava:DragonHDLatestNeural` and `en-US-Harper:MAI-Voice-2.1` |
 | Speaking style | Speech | `<mstts:express-as style="…">`; MAI-Voice Harper, Grant and Sage (en-US) offer `narrator`, `educational`, `audiobook`. Dragon HD: its SSML support table says no `express-as`, while an example on the same page uses one: test before relying on it. Dragon HD Omni supports styles | `narrator` or `educational` (MAI-Voice) |
-| Rate and pitch | Speech (not HD) | `<prosody rate="-5%" pitch="+0%">`. **No HD voice supports `<prosody>`** (Dragon HD or Omni): use a MAI-Voice or standard voice when speed matters | Slightly slower than default (−5 to −10%) for slides |
+| Rate and pitch | Speech | `<prosody rate="-5%" pitch="+0%">`. The docs say HD voices don't support it, but `rate` measurably works on Dragon HD and Omni (2026-11-11) | Slightly slower than default (−5 to −10%) for slides |
 | Pauses | Speech | `<break time="600ms"/>` (Dragon HD yes, Omni no); `<mstts:silence>` (no HD voice) | 300–500 ms `<break>` between paragraphs (the prototype uses 400 ms) |
 | HD temperature | Speech (HD) | `parameters="temperature=0.6"`: lower is steadier from slide to slide (Dragon HD default 1.0) | 0.5–0.7 for a consistent voice across a deck |
 | Pronunciation | Speech | `<sub alias="…">`, `<phoneme>`, `<say-as interpret-as="characters">`, custom lexicon. Dragon HD: lexicon alias entries only, no `<phoneme>` on Omni; `parameters="enhancePronunciation=true"` helps with acronyms and product names | Acronyms and product names |
@@ -179,8 +202,10 @@ These go into `docs/tts-tuning.md` in phase 1, then become profile settings in p
 
 SSML support differs by voice family
 ([HD voices: supported SSML](https://learn.microsoft.com/azure/ai-services/speech-service/high-definition-voices#supported-and-unsupported-ssml-elements-for-azure-speech-hd-voices)).
-A profile that sets something its voice doesn't support (rate or pitch on an HD voice, for
+A profile that sets something its voice doesn't support (temperature on a MAI-Voice voice, for
 example) is refused with a clear error when it's loaded, rather than sent and silently ignored.
+Measured on 2026-11-11, `<prosody>` works on HD voices despite that table: see
+[tts-tuning.md](tts-tuning.md#5-what-each-voice-family-honors).
 
 ## Open questions
 
