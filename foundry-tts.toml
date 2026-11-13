@@ -32,6 +32,11 @@ max_input_chars = 4096
 [deck]
 # foundry-tts deck: a "(Click)" cue in the speaker notes becomes a pause of this length.
 cue_pause_ms = 500
+# foundry-tts deck narrate: the name of the audio shape it inserts (a rerun replaces shapes with
+# this name or its tag), and how far right of the slide it goes, in points, so it never covers
+# the slide's content. The shape is also hidden during the show.
+audio_shape_name = "foundry-tts narration"
+off_slide_margin_points = 20
 
 [http]
 timeout_seconds = 120
