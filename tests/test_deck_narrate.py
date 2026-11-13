@@ -130,12 +130,23 @@ def fake_narrate(monkeypatch):
     """Records the calls to powerpoint.narrate and writes a stand-in narrated deck."""
     calls = []
 
-    def narrate(path, narrations, out_path, *, shape_name, margin_points):
+    def narrate(path, narrations, out_path, *, shape_name, margin_points, advance, video):
         calls.append(
-            {"path": path, "narrations": narrations, "out": out_path, "shape": shape_name}
+            {
+                "path": path,
+                "narrations": narrations,
+                "out": out_path,
+                "shape": shape_name,
+                "advance": advance,
+                "video": video,
+            }
         )
         out_path.write_bytes(b"PK\x03\x04narrated")
-        return [powerpoint.Placed(n.slide, 1.5, 0) for n in narrations]
+        if video is not None:
+            video.path.write_bytes(b"mp4")
+        placed = [powerpoint.Placed(n.slide, 1.5, 0) for n in narrations]
+        timings = {n.slide: 2.5 for n in narrations} if advance else {}
+        return powerpoint.Narrated(placed, timings)
 
     monkeypatch.setattr(powerpoint, "narrate", narrate)
     return calls
@@ -210,7 +221,7 @@ def test_narrate_problems_stop_before_powerpoint(
 
 @pytest.mark.parametrize(
     ("deck_out", "message"),
-    [("contoso.pptx", "can't replace the source deck"), ("copy.ppt", "saved as .pptx")],
+    [("contoso.pptx", "can't replace the source deck"), ("copy.ppt", r"must end with \.pptx")],
 )
 def test_narrated_copy_path_is_checked(local, client, contoso, fake_narrate, deck_out, message):
     with pytest.raises(TtsError, match=message):
@@ -250,3 +261,133 @@ def test_main_narrate_reports_errors(tmp_path, monkeypatch, caplog):
         )
     assert code == 1
     assert "Deck not found" in caplog.text
+
+
+# ---- phase 5: timings, video, reruns ----
+
+
+def test_timings_follow_the_narration_plus_a_gap(tmp_path):
+    one = audio(tmp_path, "slide-01.mp3")
+    presentation = FakePresentation(3, {str(one.resolve()): 12_340})
+    placed = place(presentation, [Narration(1, one)])
+
+    timings = powerpoint.set_timings(
+        presentation, placed, powerpoint.Advance(gap_seconds=1, silent_slide_seconds=5)
+    )
+
+    assert timings == {1: 13.34, 2: 5, 3: 5}
+    for number, seconds in timings.items():
+        transition = presentation.slide(number).SlideShowTransition
+        assert (transition.AdvanceOnTime, transition.AdvanceTime) == (MSO_TRUE, seconds)
+        assert transition.AdvanceOnClick == MSO_TRUE  # a click still works
+    assert presentation.SlideShowSettings.AdvanceMode == powerpoint.PP_SLIDE_SHOW_USE_SLIDE_TIMINGS
+
+
+def video(tmp_path, timeout=60):
+    return powerpoint.Video(
+        path=tmp_path / "deck.mp4",
+        default_slide_seconds=5,
+        vertical_resolution=1080,
+        frames_per_second=30,
+        quality=85,
+        timeout_seconds=timeout,
+        poll_seconds=5,
+    )
+
+
+class Clock:
+    def __init__(self):
+        self.now = 0.0
+        self.sleeps = []
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+    def __call__(self):
+        return self.now
+
+
+def test_video_export_waits_until_powerpoint_is_done(tmp_path):
+    presentation = FakePresentation(1, video_statuses=(2, 1, 1, 3))  # queued, in progress, done
+    clock = Clock()
+    powerpoint.export_video(presentation, video(tmp_path), sleep=clock.sleep, clock=clock)
+    ((path, timings, default, height, fps, quality),) = presentation.video_calls
+    assert (path, timings, default, height, fps, quality) == (
+        str((tmp_path / "deck.mp4").resolve()),
+        True,
+        5,
+        1080,
+        30,
+        85,
+    )
+    assert clock.sleeps == [5, 5, 5]
+
+
+@pytest.mark.parametrize(
+    ("statuses", "timeout", "message"),
+    [((1, 4), 60, "could not export the video"), ((1,), 12, "did not finish within 12 s")],
+)
+def test_video_export_failures(tmp_path, statuses, timeout, message):
+    presentation = FakePresentation(1, video_statuses=statuses)
+    clock = Clock()
+    with pytest.raises(TtsError, match=message):
+        powerpoint.export_video(
+            presentation, video(tmp_path, timeout), sleep=clock.sleep, clock=clock
+        )
+
+
+def test_a_video_needs_timings(tmp_path):
+    with pytest.raises(TtsError, match="needs the slides to advance"):
+        powerpoint.narrate(
+            tmp_path / "d.pptx", [], tmp_path / "o.pptx", shape_name=SHAPE, margin_points=20,
+            video=video(tmp_path),
+        )  # fmt: skip
+
+
+def test_auto_advance_and_video_options(local, client, contoso, fake_narrate, tmp_path):
+    run(["narrate", str(contoso), "--auto-advance"], local, client)
+    advance = fake_narrate[-1]["advance"]
+    assert advance == powerpoint.Advance(gap_seconds=1, silent_slide_seconds=5)
+    assert fake_narrate[-1]["video"] is None
+
+    run(["narrate", str(contoso), "--video", "--skip-synth"], local, client)
+    call = fake_narrate[-1]
+    assert call["advance"] is not None  # turned on by --video
+    assert call["video"].path == tmp_path / "output" / "contoso" / "contoso.narrated.mp4"
+    assert (call["video"].vertical_resolution, call["video"].quality) == (1080, 85)
+
+
+def test_a_rerun_replaces_its_own_copy_and_video_without_overwrite(
+    local, client, transport, contoso, fake_narrate, tmp_path
+):
+    folder = tmp_path / "output" / "contoso"
+    run(["narrate", str(contoso), "--video"], local, client)
+    manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["narrated_outputs"] == sorted(
+        str((folder / name).resolve())
+        for name in ("contoso.narrated.mp4", "contoso.narrated.pptx")
+    )
+    requests = len(transport.requests)
+
+    run(["narrate", str(contoso), "--video"], local, client)  # no --overwrite needed
+
+    assert len(transport.requests) == requests  # nothing changed: all audio reused
+    assert len(fake_narrate) == 2
+    manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+    assert len(manifest["narrated_outputs"]) == 2  # kept through deck synth's rerun
+
+
+def test_a_video_of_an_encrypted_deck_is_flagged(
+    local, client, contoso, fake_narrate, monkeypatch, caplog
+):
+    run(["synth", str(contoso)], local, client)
+    real_kind = deck.file_kind
+    monkeypatch.setattr(
+        deck_narrate.deck,
+        "file_kind",
+        lambda path: deck.OLE if path == contoso else real_kind(path),
+    )
+    with caplog.at_level(logging.WARNING):
+        run(["narrate", str(contoso), "--skip-synth", "--video"], local, client)
+    assert "the MP4 video won't be" in caplog.text

@@ -81,9 +81,10 @@ def test_one_audio_file_per_slide_with_notes_and_a_manifest(
         {"slide": 3, "reason": "hidden"},
         {"slide": 5, "reason": "no notes"},  # only a comment
     ]
-    # The hash is the sha256 of exactly what was sent.
+    # The hash is the sha256 of the audio format and exactly what was sent.
     for entry, request in zip(manifest["slides"], transport.requests, strict=True):
-        assert entry["hash"] == "sha256:" + hashlib.sha256(request.content).hexdigest()
+        sent = local.speech.output_format.encode() + b"\n" + request.content
+        assert entry["hash"] == "sha256:" + hashlib.sha256(sent).hexdigest()
     assert manifest["slides"][0]["cleanups"] == {
         "cue": 1,
         "emoji": 1,
@@ -211,3 +212,71 @@ def test_deck_options_are_parsed():
     assert (args.profile, args.reader, args.include_hidden) == ("ava-hd", "powerpoint", True)
     with pytest.raises(SystemExit):
         cli.build_deck_parser().parse_args(["synth", "d.pptx", "--reader", "libreoffice"])
+
+
+# ---- phase 5: reruns only redo what changed ----
+
+
+def test_a_rerun_synthesizes_only_the_changed_slide(local, client, transport, tmp_path):
+    from decks import CONTOSO_SLIDES
+
+    deck_path = make_deck(tmp_path / "contoso.pptx")
+    first = read_manifest(synth([str(deck_path)], local, client))
+    assert len(transport.requests) == 2
+    transport.requests.clear()
+
+    # Same deck again: every slide's audio is reused, no Azure call.
+    again = read_manifest(synth([str(deck_path)], local, client))
+    assert transport.requests == []
+    assert again["slides"] == first["slides"]
+
+    # Slide 4's notes change: only slide 4 is synthesized.
+    changed = [list(slide) for slide in CONTOSO_SLIDES]
+    changed[3][1] = "The migration moved to December."
+    make_deck(deck_path, [tuple(slide) for slide in changed])
+    third = read_manifest(synth([str(deck_path)], local, client))
+    (request,) = transport.requests
+    assert "December" in request.content.decode()
+    assert third["slides"][0] == first["slides"][0]
+    assert third["slides"][1]["hash"] != first["slides"][1]["hash"]
+
+
+def test_a_profile_change_redoes_every_slide(local, client, transport, contoso):
+    synth([str(contoso)], local, client)
+    transport.requests.clear()
+    synth([str(contoso), "--profile", "ava-hd-steady"], local, client)
+    assert len(transport.requests) == 2
+
+
+def test_overwrite_redoes_everything(local, client, transport, contoso):
+    synth([str(contoso)], local, client)
+    transport.requests.clear()
+    synth([str(contoso), "--overwrite"], local, client)
+    assert len(transport.requests) == 2
+
+
+def test_audio_of_a_slide_without_notes_any_more_is_removed(local, client, transport, tmp_path):
+    deck_path = make_deck(tmp_path / "talk.pptx", [("A", "One.", False), ("B", "Two.", False)])
+    synth([str(deck_path)], local, client)
+    folder = tmp_path / "output" / "talk"
+    assert (folder / "slide-02.mp3").exists()
+    make_deck(deck_path, [("A", "One.", False), ("B", None, False)])
+    manifest = read_manifest(synth([str(deck_path)], local, client))
+    assert not (folder / "slide-02.mp3").exists()
+    assert [s["slide"] for s in manifest["slides"]] == [1]
+
+
+def test_a_file_the_tool_did_not_write_is_still_protected(local, client, contoso, tmp_path):
+    synth([str(contoso)], local, client)
+    (tmp_path / "output" / "contoso" / "slide-01.ssml").unlink(missing_ok=True)
+    (tmp_path / "output" / "contoso" / "slide-02.mp3").write_bytes(b"mine")  # not in the manifest
+    make_deck(contoso, [("A", "x", False), ("B", "Now with notes.", False)])
+    with pytest.raises(TtsError, match="slide-02.mp3 already exists"):
+        synth([str(contoso)], local, client)
+
+
+def test_a_manifest_for_another_deck_is_refused(local, client, contoso, tmp_path):
+    synth([str(contoso)], local, client)
+    other = make_deck(tmp_path / "other.pptx")
+    with pytest.raises(TtsError, match="is for contoso.pptx, not other.pptx"):
+        synth([str(other), "--out", str(tmp_path / "output" / "contoso")], local, client)

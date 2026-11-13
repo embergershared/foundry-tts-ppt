@@ -35,6 +35,17 @@ class DeckSettings:
     cue_pause_ms: int
     audio_shape_name: str
     off_slide_margin_points: float
+    advance_gap_seconds: float
+    silent_slide_seconds: float
+
+
+@dataclass(frozen=True)
+class VideoSettings:
+    vertical_resolution: int
+    frames_per_second: int
+    quality: int
+    timeout_seconds: float
+    poll_seconds: float
 
 
 @dataclass(frozen=True)
@@ -59,6 +70,7 @@ class Settings:
     speech: SpeechSettings
     openai: OpenAiSettings
     deck: DeckSettings
+    video: VideoSettings
     http: HttpSettings
     output_folder: Path
     azure: AzureSettings
@@ -207,6 +219,7 @@ def load_settings(
     speech = _section(data, "speech", config_path)
     openai = _section(data, "openai", config_path)
     deck = _section(data, "deck", config_path)
+    video = _section(data, "video", config_path)
     http = _section(data, "http", config_path)
     output = _section(data, "output", config_path)
 
@@ -234,6 +247,15 @@ def load_settings(
             cue_pause_ms=_value(deck, "cue_pause_ms", int, where("deck")),
             audio_shape_name=_value(deck, "audio_shape_name", str, where("deck")),
             off_slide_margin_points=_value(deck, "off_slide_margin_points", float, where("deck")),
+            advance_gap_seconds=_value(deck, "advance_gap_seconds", float, where("deck")),
+            silent_slide_seconds=_value(deck, "silent_slide_seconds", float, where("deck")),
+        ),
+        video=VideoSettings(
+            vertical_resolution=_value(video, "vertical_resolution", int, where("video")),
+            frames_per_second=_value(video, "frames_per_second", int, where("video")),
+            quality=_value(video, "quality", int, where("video")),
+            timeout_seconds=_value(video, "timeout_seconds", float, where("video")),
+            poll_seconds=_value(video, "poll_seconds", float, where("video")),
         ),
         http=HttpSettings(
             timeout_seconds=_value(http, "timeout_seconds", float, where("http")),

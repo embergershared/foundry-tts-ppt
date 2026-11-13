@@ -133,6 +133,20 @@ def build_deck_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Embed the audio and manifest already in the out folder; no Azure call.",
     )
+    narrate.add_argument(
+        "--auto-advance",
+        action="store_true",
+        help=(
+            "Each slide moves on when its narration ends ([deck] advance_gap_seconds later); a "
+            "slide without narration shows [deck] silent_slide_seconds. The deck runs on its own."
+        ),
+    )
+    narrate.add_argument(
+        "--video",
+        action="store_true",
+        help="Also export the narrated deck to MP4 (<deck>.narrated.mp4); implies --auto-advance.",
+    )
+    narrate.add_argument("--video-out", type=Path, help="Where the MP4 goes; implies --video.")
     return parser
 
 
@@ -234,7 +248,7 @@ def run(
     # Every request is built (and checked) before the first call to Azure.
     prepared = {
         profile.name: (
-            speak.Requests(profile, [hand_written], speak.extension(profile, settings))
+            speak.hand_written(hand_written, profile, settings)
             if hand_written is not None
             else speak.prepare(paragraphs, profile=profile, settings=settings, lexicon=lexicon)
         )
@@ -308,6 +322,12 @@ def run_deck(
         deck_out=args.deck_out,
         overwrite=args.overwrite,
         synth=None if args.skip_synth else synth,
+        auto_advance=args.auto_advance,
+        video_out=(
+            args.video_out or deck_narrate.video_path(args.deck, folder)
+            if args.video or args.video_out
+            else None
+        ),
     )
 
 

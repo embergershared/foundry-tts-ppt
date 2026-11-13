@@ -33,23 +33,39 @@ _SYNCSAFE_BITS = 7
 
 @dataclass(frozen=True)
 class Requests:
-    """The bodies to send for one text, in order, and the audio file extension."""
+    """The bodies to send for one text, in order, the audio format asked for, and its extension."""
 
     profile: Profile
     bodies: list[str]
+    audio_format: str
     extension: str
 
     @property
     def hash(self) -> str:
-        """sha256 of what is sent: changes with the notes, profile, lexicon or settings."""
-        digest = hashlib.sha256("\n".join(self.bodies).encode("utf-8")).hexdigest()
-        return f"sha256:{digest}"
+        """sha256 of what is sent (the audio format, then each body).
+
+        It changes with the notes, the profile, the lexicon or a setting that changes a request,
+        so a rerun can keep the audio of a slide whose hash is the same.
+        """
+        text = "\n".join([self.audio_format, *self.bodies])
+        return f"sha256:{hashlib.sha256(text.encode('utf-8')).hexdigest()}"
+
+
+def audio_format(profile: Profile, settings: Settings) -> str:
+    if profile.engine == SPEECH:
+        return settings.speech.output_format
+    return settings.openai.response_format
 
 
 def extension(profile: Profile, settings: Settings) -> str:
     if profile.engine == SPEECH:
         return engines.speech_extension(settings.speech.output_format)
     return engines.openai_extension(settings.openai.response_format)
+
+
+def hand_written(ssml: str, profile: Profile, settings: Settings) -> Requests:
+    """The request for a hand-written SSML file, sent as is."""
+    return Requests(profile, [ssml], audio_format(profile, settings), extension(profile, settings))
 
 
 def split(
@@ -145,7 +161,12 @@ def prepare(
             f"The text is too long for one request, and only MP3 parts can be joined; "
             f"'{profile.name}' makes {ext} audio. Use an MP3 format or shorten the text."
         )
-    return Requests(profile=profile, bodies=bodies, extension=ext)
+    return Requests(
+        profile=profile,
+        bodies=bodies,
+        audio_format=audio_format(profile, settings),
+        extension=ext,
+    )
 
 
 def send(

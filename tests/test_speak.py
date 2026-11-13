@@ -89,10 +89,23 @@ def test_split_parts_need_mp3(settings):
         )
 
 
-def test_hash_is_the_sha256_of_the_bodies(settings):
-    requests = speak.Requests(settings.profile("ava-hd"), ["<speak>a</speak>"], ".mp3")
-    expected = hashlib.sha256(b"<speak>a</speak>").hexdigest()
+def test_hash_is_the_sha256_of_the_format_and_the_bodies(settings):
+    requests = speak.Requests(
+        settings.profile("ava-hd"), ["<speak>a</speak>", "<speak>b</speak>"], "fmt", ".mp3"
+    )
+    expected = hashlib.sha256(b"fmt\n<speak>a</speak>\n<speak>b</speak>").hexdigest()
     assert requests.hash == f"sha256:{expected}"
+
+
+def test_hash_changes_with_the_audio_format(settings):
+    paragraphs = markup.parse("Hello")
+    other = with_limits(settings, output_format="audio-48khz-192kbitrate-mono-mp3")
+
+    def hash_with(chosen):
+        profile = chosen.profile("ava-hd")
+        return speak.prepare(paragraphs, profile=profile, settings=chosen, lexicon=NO_LEXICON).hash
+
+    assert hash_with(settings) != hash_with(other)
 
 
 def test_hash_changes_with_the_profile(settings):

@@ -2,7 +2,8 @@
 
 - `read_slides`: the slides of a deck python-pptx can't open (a sensitivity label, a password, an
   old .ppt).
-- `narrate`: a narrated copy of a deck, each slide's audio embedded and set to play on its own.
+- `narrate`: a narrated copy of a deck, each slide's audio embedded and set to play on its own;
+  optionally each slide advancing when its narration ends, and an MP4 export.
 
 As in the PowerShell prototype, the source deck is opened read-only and without a window, it is
 never saved (a copy is saved under a new name), and PowerPoint is quit only if this run started
@@ -11,7 +12,8 @@ it. PowerPoint opens a labeled deck with the signed-in user's rights.
 
 import logging
 import sys
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,6 +34,11 @@ MS_PER_SECOND = 1000
 # MsoAnimEffect.msoAnimEffectMediaPlay and MsoAnimTriggerType.msoAnimTriggerAfterPrevious.
 MSO_ANIM_EFFECT_MEDIA_PLAY = 83
 MSO_ANIM_TRIGGER_AFTER_PREVIOUS = 3
+# PpSlideShowAdvanceMode.ppSlideShowUseSlideTimings: the show follows each slide's timing.
+PP_SLIDE_SHOW_USE_SLIDE_TIMINGS = 2
+# PpMediaTaskStatus of Presentation.CreateVideoStatus.
+PP_MEDIA_TASK_DONE = 3
+PP_MEDIA_TASK_FAILED = 4
 # Every shape this tool inserts carries this tag, so a rerun finds and replaces it even if the
 # shape was renamed; the shape name (a setting) is found too.
 TAG_NAME = "FOUNDRY_TTS"
@@ -53,6 +60,27 @@ class Placed:
     slide: int
     seconds: float  # the audio length PowerPoint reports
     replaced: int  # narration shapes of an earlier run removed
+
+
+@dataclass(frozen=True)
+class Advance:
+    """Slides advance on their own: a narrated slide when its audio ends plus a gap."""
+
+    gap_seconds: float
+    silent_slide_seconds: float  # a slide without narration
+
+
+@dataclass(frozen=True)
+class Video:
+    """An MP4 export of the narrated deck (Presentation.CreateVideo)."""
+
+    path: Path
+    default_slide_seconds: float
+    vertical_resolution: int
+    frames_per_second: int
+    quality: int
+    timeout_seconds: float
+    poll_seconds: float
 
 
 def _com_message(error: Exception) -> str:
@@ -212,6 +240,66 @@ def place_narrations(
     return placed
 
 
+def set_timings(presentation, placed: list[Placed], advance: Advance) -> dict[int, float]:
+    """Every slide advances on its own (a click still works); returns its time, in seconds.
+
+    A narrated slide lasts its audio plus the gap; a slide without narration lasts
+    silent_slide_seconds. The show is set to use these timings.
+    """
+    narrated = {item.slide: item.seconds for item in placed}
+    timings = {}
+    for number in range(1, presentation.Slides.Count + 1):
+        transition = presentation.Slides.Item(number).SlideShowTransition
+        seconds = (
+            round(narrated[number] + advance.gap_seconds, 2)
+            if number in narrated
+            else advance.silent_slide_seconds
+        )
+        transition.AdvanceOnTime = MSO_TRUE
+        transition.AdvanceTime = seconds
+        timings[number] = seconds
+    presentation.SlideShowSettings.AdvanceMode = PP_SLIDE_SHOW_USE_SLIDE_TIMINGS
+    return timings
+
+
+def export_video(
+    presentation,
+    video: Video,
+    *,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> None:
+    """Exports the deck to MP4 with its timings and narration; waits until PowerPoint is done."""
+    log.info("Exporting the video; this takes a while.", extra={"path": str(video.path)})
+    presentation.CreateVideo(
+        str(video.path.resolve()),
+        True,  # UseTimingsAndNarrations
+        video.default_slide_seconds,
+        video.vertical_resolution,
+        video.frames_per_second,
+        video.quality,
+    )
+    deadline = clock() + video.timeout_seconds
+    while True:
+        status = presentation.CreateVideoStatus
+        if status == PP_MEDIA_TASK_DONE:
+            return
+        if status == PP_MEDIA_TASK_FAILED:
+            raise TtsError(f"PowerPoint could not export the video {video.path}.")
+        if clock() > deadline:
+            raise TtsError(
+                f"The video export did not finish within {video.timeout_seconds:g} s "
+                "([video] timeout_seconds)."
+            )
+        sleep(video.poll_seconds)
+
+
+@dataclass(frozen=True)
+class Narrated:
+    placed: list[Placed]
+    timings: dict[int, float]  # empty without Advance
+
+
 def narrate(
     path: Path,
     narrations: list[Narration],
@@ -219,16 +307,27 @@ def narrate(
     *,
     shape_name: str,
     margin_points: float,
-) -> list[Placed]:
-    """Saves a copy of the deck at out_path (.pptx) with the narration embedded."""
+    advance: Advance | None = None,
+    video: Video | None = None,
+) -> Narrated:
+    """Saves a copy of the deck at out_path (.pptx) with the narration embedded.
+
+    With `advance`, the slides advance on their own; with `video`, the copy is also exported to
+    MP4 (which needs `advance`, or narrated slides would be cut at default_slide_seconds).
+    """
+    if video is not None and advance is None:
+        raise TtsError("A video export needs the slides to advance on their own.")
     with _powerpoint(path) as (app, com_error), _open_read_only(app, path, com_error) as deck:
         try:
             placed = place_narrations(
                 deck, narrations, shape_name=shape_name, margin_points=margin_points
             )
+            timings = set_timings(deck, placed, advance) if advance is not None else {}
             deck.SaveAs(str(out_path.resolve()), PP_SAVE_AS_PPTX)
+            if video is not None:
+                export_video(deck, video)
         except com_error as error:
             raise TtsError(
                 f"PowerPoint could not narrate {path}: {_com_message(error)}"
             ) from error
-        return placed
+        return Narrated(placed, timings)
