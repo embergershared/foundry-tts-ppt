@@ -7,6 +7,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- `foundry-tts deck narrate deck.pptx`: a copy of the deck with each slide's audio embedded, starting on its own in Slide Show; made through desktop PowerPoint, which keeps a sensitivity label's protection (#12).
 - `foundry-tts deck synth deck.pptx`: one audio file per slide from its speaker notes, with presenter cues cleaned out, and a `manifest.json`; sensitivity-labeled decks are read through desktop PowerPoint (#11).
 - Voice profiles in `foundry-tts.toml` (`--profile`, repeat it to compare), a pronunciation list (`[lexicon]`, `--lexicon`), and markup in the text: `//` comment lines and `[pause 1s]` (#10).
 - `foundry-tts` command: text typed, from a file or piped in becomes an audio file made by Foundry text to speech, with Azure Speech voices or `gpt-4o-mini-tts`; `infra/` deploys the Foundry resource with `azd`; voice tuning guide (#9).
