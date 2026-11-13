@@ -131,7 +131,8 @@ The `//` comments, `[pause 1s]` and the pronunciation list of
 | `--out <folder>` | Where the audio and the manifest go (default `output\<deck name>\`) |
 | `--include-hidden` | Also narrate hidden slides |
 | `--reader auto\|python-pptx\|powerpoint` | How the deck is read (below) |
-| `--overwrite`, `--save-ssml` | As for text (`slide-NN.ssml`) |
+| `--overwrite` | Make every slide's audio again, and replace files the tool didn't write |
+| `--save-ssml` | As for text (`slide-NN.ssml`) |
 
 **Labeled decks.** A deck protected by a Microsoft Purview sensitivity label (or a password) is
 encrypted, which `python-pptx` can't open. The tool sees it from the file's first bytes and reads
@@ -144,9 +145,14 @@ Everything is checked before the first Azure call (notes, markup, existing files
 fails, the run stops and names it; the slides before it are kept and no manifest is written.
 
 `manifest.json` lists, for each slide said: its number, file, length in seconds, size, number of
-requests, the cleanups, and a `hash`, the sha256 of exactly what was sent to Azure. The hash
-changes when the notes, the profile, the lexicon or the settings change. Skipped slides are listed
-with their reason.
+requests, the cleanups, and a `hash`, the sha256 of the audio format and exactly what was sent to
+Azure. The hash changes when the notes, the profile, the lexicon or a setting that changes a
+request change. Skipped slides are listed with their reason.
+
+**Reruns only redo what changed.** Run it again into the same folder (no `--overwrite`): a slide
+whose hash is the same as in the manifest keeps its audio, with no Azure call; a slide whose notes
+changed is synthesized again; the audio of a slide that has no notes any more is removed. Files
+the tool didn't write are never replaced without `--overwrite`, which makes all the audio again.
 
 ## 6. Put the narration in the deck
 
@@ -173,18 +179,26 @@ In the narrated copy, each slide with notes has one audio shape:
 | The `deck synth` options | Make the audio first (same defaults) |
 | `--skip-synth` | Embed the audio and `manifest.json` already in the out folder; no Azure call |
 | `--deck-out <file>.pptx` | Where the narrated copy goes |
-| `--overwrite` | Replace an earlier narrated copy (and the audio, unless `--skip-synth`) |
+| `--auto-advance` | Each slide moves on by itself: a narrated slide `[deck] advance_gap_seconds` (1 s) after its audio ends, a slide without narration after `[deck] silent_slide_seconds` (5 s). The deck runs start to end without a click (a click still works) |
+| `--video`, `--video-out <file>.mp4` | Also export the narrated copy to MP4 (`<deck name>.narrated.mp4`), with PowerPoint's video export (`[video]` settings: 1080p, 30 fps). Turns `--auto-advance` on |
+| `--overwrite` | Make all the audio again and replace any existing file |
 
-Running it again on a narrated copy replaces the audio the tool put in (shapes named
-`[deck] audio_shape_name`, or carrying its tag) and leaves other media alone; a slide that has no
-notes any more loses its old narration.
+Running it again reuses the unchanged slides' audio (see reruns above) and replaces the narrated
+copy and video it wrote before (they are listed in the manifest), without `--overwrite`. In the
+copy, the audio the tool put in (shapes named `[deck] audio_shape_name`, or carrying its tag) is
+replaced and other media are left alone; a slide that has no notes any more loses its narration.
 
 A deck with a **sensitivity label** stays encrypted: PowerPoint saves the copy with the same
 protection (checked on a real labeled deck). If a copy of an encrypted deck comes out
 unencrypted, the tool logs a warning; check its label before sharing it.
 
-Open the copy and start the Slide Show to listen: each slide's narration plays on its own; you
-still click to go to the next slide.
+A **video** is not protected by the deck's label: anyone with the MP4 can watch it. The tool
+warns when it exports a video of an encrypted deck.
+
+Open the copy and start the Slide Show to listen: each slide's narration plays on its own. Without
+`--auto-advance` you click to go to the next slide; with it, the deck runs on its own, for
+example as a kiosk or a self-running presentation (`Slide Show > Set Up Slide Show > Browsed at
+a kiosk` also loops it).
 
 ## 7. Run the checks
 
@@ -225,3 +239,9 @@ azd down --purge
 ```
 
 This deletes the resource group and purges the Foundry resource (no way back).
+
+**Cost.** The Foundry resource has no fixed cost: Azure Speech is billed per character synthesized
+(HD and MAI voices cost more than standard ones) and `gpt-4o-mini-tts` per token; see
+[Azure Speech pricing](https://azure.microsoft.com/pricing/details/cognitive-services/speech-services/).
+A deck of about 18,500 characters of notes is one run's worth; reruns only pay for the slides that
+changed. Remove the resources when you are done.
