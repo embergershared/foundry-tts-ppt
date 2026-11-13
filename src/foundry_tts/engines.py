@@ -6,6 +6,7 @@
 Both sign in with a Microsoft Entra ID token for https://cognitiveservices.azure.com.
 """
 
+import json
 import logging
 from collections.abc import Callable
 
@@ -13,6 +14,7 @@ import httpx
 
 from foundry_tts.config import Settings
 from foundry_tts.errors import TtsError
+from foundry_tts.profiles import ENGINES, OPENAI, SPEECH  # noqa: F401 (re-exported)
 
 log = logging.getLogger(__name__)
 
@@ -21,10 +23,6 @@ TOKEN_SCOPE = "https://cognitiveservices.azure.com/.default"
 ERROR_BODY_CHARS = 500
 
 TokenProvider = Callable[[], str]
-
-SPEECH = "speech"
-OPENAI = "openai"
-ENGINES = (SPEECH, OPENAI)
 
 # File extension of each output format.
 _OPENAI_EXTENSIONS = {
@@ -116,6 +114,48 @@ def synthesize_speech(
     return _check_response(response, "Azure Speech")
 
 
+def openai_body(text: str, *, voice: str, instructions: str, settings: Settings) -> str:
+    """The JSON body of one gpt-4o-mini-tts request (sent as is, so it can be hashed)."""
+    limit = settings.openai.max_input_chars
+    if len(text) > limit:
+        raise TtsError(
+            f"The text has {len(text)} characters; the openai engine takes at most {limit}. "
+            "Shorten it or use the speech engine."
+        )
+    body = {
+        "model": settings.openai_deployment(),
+        "input": text,
+        "voice": voice,
+        "response_format": settings.openai.response_format,
+    }
+    if instructions:
+        body["instructions"] = instructions
+    return json.dumps(body, ensure_ascii=False, sort_keys=True)
+
+
+def synthesize_openai_body(
+    body: str, settings: Settings, client: httpx.Client, get_token: TokenProvider
+) -> bytes:
+    """gpt-4o-mini-tts: posts a body made by openai_body and returns the audio."""
+    url = settings.openai_speech_url()
+    log.info(
+        "Calling gpt-4o-mini-tts.",
+        extra={"url": url, "deployment": settings.openai_deployment()},
+    )
+    response = _post(
+        client,
+        "Azure OpenAI",
+        url,
+        content=body.encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {get_token()}",
+            "Content-Type": "application/json",
+            "User-Agent": settings.http.user_agent,
+        },
+    )
+    return _check_response(response, "Azure OpenAI")
+
+
 def synthesize_openai(
     text: str,
     *,
@@ -126,27 +166,5 @@ def synthesize_openai(
     get_token: TokenProvider,
 ) -> bytes:
     """gpt-4o-mini-tts: posts the text and the voice direction, returns the audio."""
-    limit = settings.openai.max_input_chars
-    if len(text) > limit:
-        raise TtsError(
-            f"The text has {len(text)} characters; the openai engine takes at most {limit}. "
-            "Shorten it or use the speech engine."
-        )
-    url = settings.openai_speech_url()
-    body = {
-        "model": settings.openai_deployment(),
-        "input": text,
-        "voice": voice,
-        "response_format": settings.openai.response_format,
-    }
-    if instructions:
-        body["instructions"] = instructions
-    log.info("Calling gpt-4o-mini-tts.", extra={"url": url, "deployment": body["model"]})
-    response = _post(
-        client,
-        "Azure OpenAI",
-        url,
-        json=body,
-        headers={"Authorization": f"Bearer {get_token()}", "User-Agent": settings.http.user_agent},
-    )
-    return _check_response(response, "Azure OpenAI")
+    body = openai_body(text, voice=voice, instructions=instructions, settings=settings)
+    return synthesize_openai_body(body, settings, client, get_token)

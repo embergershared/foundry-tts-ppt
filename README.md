@@ -24,9 +24,11 @@ azd env set AZURE_PRINCIPAL_ID (az ad signed-in-user show --query id -o tsv)
 azd provision
 azd env get-values | Out-File -Encoding utf8 .env
 .venv\Scripts\foundry-tts --text "Hello from Microsoft Foundry."
+.venv\Scripts\foundry-tts deck narrate .\deck.pptx
 ```
 
-The audio file is written to `output\`. Details: [docs/getting-started.md](docs/getting-started.md).
+The audio files are written to `output\`; for a deck, one per slide and a narrated copy of the
+deck (needs desktop PowerPoint on Windows). Details: [docs/getting-started.md](docs/getting-started.md).
 
 ## Contents
 
