@@ -98,7 +98,7 @@ def media_parts(path: Path) -> list[str]:
 
 
 def narrate(source: Path, narrations, out: Path):
-    return powerpoint.narrate(source, narrations, out, shape_name=SHAPE, margin_points=20)
+    return powerpoint.narrate(source, narrations, out, shape_name=SHAPE, margin_points=20).placed
 
 
 @needs_powerpoint
@@ -130,3 +130,23 @@ def test_narrated_copy_embeds_audio_that_plays_on_entry(tmp_path):
     assert xml[0].count("audioFile") == 1
     assert "audioFile" not in xml[3]  # slide 4 lost its audio: it had none this time
     assert [s.number for s in deck.read_slides(again, deck.POWERPOINT)[0]] == [1, 2, 3, 4, 5]
+
+
+@needs_powerpoint
+def test_auto_advance_writes_slide_timings(tmp_path):
+    source = make_deck(tmp_path / "contoso.pptx")
+    one = tone(tmp_path / "slide-01.wav", 2.0)
+    out = tmp_path / "timed.pptx"
+    result = powerpoint.narrate(
+        source,
+        [Narration(1, one)],
+        out,
+        shape_name=SHAPE,
+        margin_points=20,
+        advance=powerpoint.Advance(gap_seconds=1, silent_slide_seconds=5),
+    )
+    assert result.timings == {1: 3.0, 2: 5, 3: 5, 4: 5, 5: 5}
+    xml = slide_xml(out)
+    # PowerPoint writes the timing as advTm, in milliseconds, on each slide's transition.
+    assert 'advTm="3000"' in xml[0]
+    assert all('advTm="5000"' in slide for slide in xml[1:])

@@ -171,13 +171,33 @@ class FakePageSetup:
     SlideWidth: float = 960.0  # noqa: N815
 
 
-class FakePresentation:
-    """slide_count slides; lengths_ms maps an audio path (as given to AddMediaObject2) to ms."""
+@dataclass
+class FakeSlideShowSettings:
+    AdvanceMode: int = 1  # noqa: N815 (ppSlideShowManualAdvance)
 
-    def __init__(self, slide_count, lengths_ms=None):
+
+class FakePresentation:
+    """slide_count slides; lengths_ms maps an audio path (as given to AddMediaObject2) to ms.
+
+    video_statuses: the CreateVideoStatus values returned one after the other (the last repeats).
+    """
+
+    def __init__(self, slide_count, lengths_ms=None, video_statuses=(3,)):
         self.lengths_ms = lengths_ms or {}
         self.Slides = FakeCollection([FakeSlide(self.lengths_ms) for _ in range(slide_count)])
         self.PageSetup = FakePageSetup()
+        self.SlideShowSettings = FakeSlideShowSettings()
+        self.video_calls = []
+        self._video_statuses = list(video_statuses)
+
+    def CreateVideo(self, *args):  # noqa: N802
+        self.video_calls.append(args)
+
+    @property
+    def CreateVideoStatus(self):  # noqa: N802
+        if len(self._video_statuses) > 1:
+            return self._video_statuses.pop(0)
+        return self._video_statuses[0]
 
     def slide(self, number) -> FakeSlide:
         return self.Slides.Item(number)

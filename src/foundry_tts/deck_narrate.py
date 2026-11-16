@@ -2,10 +2,14 @@
 
 The audio comes from `deck synth` (run first, or reused with `--skip-synth`); desktop PowerPoint
 embeds it (see powerpoint.py and docs/decisions/0001 and 0002). The source deck is never changed.
+With --auto-advance each slide moves on when its narration ends; --video also exports an MP4.
+
+A rerun into the same folder replaces the narrated copy and video it wrote before (listed in the
+manifest) and, through deck synth, only synthesizes the slides that changed.
 """
 
-import json
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 from foundry_tts import deck, deck_synth, powerpoint
@@ -15,25 +19,17 @@ from foundry_tts.errors import TtsError
 log = logging.getLogger(__name__)
 
 NARRATED_SUFFIX = ".narrated.pptx"
+VIDEO_SUFFIX = ".narrated.mp4"
+PPTX = ".pptx"
+MP4 = ".mp4"
 
 
 def narrated_path(deck_path: Path, folder: Path, deck_out: Path | None) -> Path:
     return deck_out or folder / f"{deck_path.stem}{NARRATED_SUFFIX}"
 
 
-def load_manifest(path: Path) -> dict:
-    try:
-        manifest = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        raise TtsError(f"No manifest at {path}: run without --skip-synth first.") from None
-    except json.JSONDecodeError as error:
-        raise TtsError(f"{path} is not a valid manifest: {error}") from error
-    if manifest.get("version") != deck_synth.MANIFEST_VERSION:
-        raise TtsError(
-            f"{path} has manifest version {manifest.get('version')!r}; this tool writes "
-            f"version {deck_synth.MANIFEST_VERSION}. Run without --skip-synth."
-        )
-    return manifest
+def video_path(deck_path: Path, folder: Path) -> Path:
+    return folder / f"{deck_path.stem}{VIDEO_SUFFIX}"
 
 
 def narrations_from(manifest: dict, folder: Path, deck_path: Path) -> list[powerpoint.Narration]:
@@ -53,6 +49,37 @@ def narrations_from(manifest: dict, folder: Path, deck_path: Path) -> list[power
     return narrations
 
 
+def _earlier_outputs(manifest_path: Path) -> set[str]:
+    """The narrated copy and video an earlier run wrote (resolved paths), from its manifest."""
+    if not manifest_path.exists():
+        return set()
+    try:
+        manifest = deck_synth.load_manifest(manifest_path)
+    except TtsError:
+        return set()  # deck synth reports a bad manifest; here it only means nothing is ours
+    return set(manifest.get(deck_synth.NARRATED_OUTPUTS, []))
+
+
+def _check_output(path: Path, suffix: str, deck_path: Path, overwrite: bool, ours: set[str]):
+    if path.suffix.lower() != suffix:
+        raise TtsError(f"{path} must end with {suffix}.")
+    if path.resolve() == deck_path.resolve():
+        raise TtsError(
+            "The narrated copy can't replace the source deck: choose another --deck-out."
+        )
+    if path.exists() and not overwrite and str(path.resolve()) not in ours:
+        raise TtsError(f"{path} already exists. Use --overwrite to replace it.")
+
+
+def _show_seconds(manifest: dict, timings: dict[int, float]) -> float | None:
+    """How long the self-running show lasts: the timings of the slides that aren't hidden."""
+    if not timings:
+        return None
+    hidden = {s["slide"] for s in manifest["skipped"] if s["reason"] == deck_synth.HIDDEN}
+    hidden |= {s["slide"] for s in manifest["slides"] if s["hidden"]}
+    return round(sum(t for number, t in timings.items() if number not in hidden), 2)
+
+
 def narrate_deck(
     deck_path: Path,
     *,
@@ -60,59 +87,108 @@ def narrate_deck(
     folder: Path,
     deck_out: Path | None,
     overwrite: bool,
-    synth,
+    synth: Callable[[], Path] | None,
+    auto_advance: bool = False,
+    video_out: Path | None = None,
 ) -> Path:
     """Embeds the audio of the manifest in folder and saves the narrated copy; returns its path.
 
     `synth` makes the audio and returns the manifest path, or is None to reuse the manifest
-    already in the folder (--skip-synth).
+    already in the folder (--skip-synth). `video_out` also exports the copy to MP4, and turns
+    auto_advance on.
     """
     out = narrated_path(deck_path, folder, deck_out)
-    if out.suffix.lower() != ".pptx":
-        raise TtsError(f"The narrated deck is saved as .pptx; {out} has another extension.")
-    if out.resolve() == deck_path.resolve():
-        raise TtsError(
-            "The narrated copy can't replace the source deck: choose another --deck-out."
+    manifest_path = folder / deck_synth.MANIFEST
+    ours = _earlier_outputs(manifest_path)
+    _check_output(out, PPTX, deck_path, overwrite, ours)
+    if video_out is not None:
+        _check_output(video_out, MP4, deck_path, overwrite, ours)
+        if not auto_advance:
+            log.info("A video needs slide timings: --auto-advance is turned on.")
+            auto_advance = True
+    source_encrypted = deck.file_kind(deck_path) == deck.OLE
+    if video_out is not None and source_encrypted:
+        log.warning(
+            "The deck is encrypted (a sensitivity label or a password); the MP4 video won't be: "
+            "anyone with the file can watch it. Share it as you would the deck's content.",
+            extra={"path": str(video_out)},
         )
-    if out.exists() and not overwrite:
-        raise TtsError(f"{out} already exists. Use --overwrite to replace it.")
-    source_kind = deck.file_kind(deck_path)
 
-    manifest_path = synth() if synth is not None else folder / deck_synth.MANIFEST
-    manifest = load_manifest(manifest_path)
+    manifest_path = synth() if synth is not None else manifest_path
+    manifest = deck_synth.load_manifest(manifest_path)
     narrations = narrations_from(manifest, folder, deck_path)
     if not narrations:
         raise TtsError("The manifest has no slide audio to embed.")
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    if out.exists():
-        out.unlink()  # --overwrite: PowerPoint's SaveAs won't replace a file on its own
-    placed = powerpoint.narrate(
+    for path in (out, video_out):
+        if path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.unlink(missing_ok=True)  # PowerPoint won't replace a file on its own
+    advance = (
+        powerpoint.Advance(
+            gap_seconds=settings.deck.advance_gap_seconds,
+            silent_slide_seconds=settings.deck.silent_slide_seconds,
+        )
+        if auto_advance
+        else None
+    )
+    video = (
+        powerpoint.Video(
+            path=video_out,
+            default_slide_seconds=settings.deck.silent_slide_seconds,
+            vertical_resolution=settings.video.vertical_resolution,
+            frames_per_second=settings.video.frames_per_second,
+            quality=settings.video.quality,
+            timeout_seconds=settings.video.timeout_seconds,
+            poll_seconds=settings.video.poll_seconds,
+        )
+        if video_out is not None
+        else None
+    )
+    result = powerpoint.narrate(
         deck_path,
         narrations,
         out,
         shape_name=settings.deck.audio_shape_name,
         margin_points=settings.deck.off_slide_margin_points,
+        advance=advance,
+        video=video,
     )
-    for item in placed:
+    for item in result.placed:
         log.info(
             "Narration embedded.",
-            extra={"slide": item.slide, "seconds": item.seconds, "replaced": item.replaced},
+            extra={
+                "slide": item.slide,
+                "seconds": item.seconds,
+                "replaced": item.replaced,
+                "advance_seconds": result.timings.get(item.slide),
+            },
         )
-    encrypted = {"source": source_kind == deck.OLE, "narrated": deck.file_kind(out) == deck.OLE}
+    encrypted = {"source": source_encrypted, "narrated": deck.file_kind(out) == deck.OLE}
     if encrypted["source"] and not encrypted["narrated"]:
         log.warning(
             "The source deck is encrypted (a sensitivity label or a password) but the narrated "
             "copy isn't: check its label in PowerPoint before sharing it.",
             extra={"path": str(out.resolve())},
         )
+    written = [out] + ([video_out] if video_out is not None else [])
+    manifest[deck_synth.NARRATED_OUTPUTS] = sorted(
+        ours | {str(path.resolve()) for path in written}
+    )
+    deck_synth.write_manifest(manifest, manifest_path)
     log.info(
         "Narrated deck saved.",
         extra={
             "path": str(out.resolve()),
-            "slides": len(placed),
-            "seconds": round(sum(item.seconds for item in placed), 2),
+            "slides": len(result.placed),
+            "seconds": round(sum(item.seconds for item in result.placed), 2),
+            "show_seconds": _show_seconds(manifest, result.timings),
             "encrypted": encrypted,
         },
     )
+    if video_out is not None:
+        log.info(
+            "Video exported.",
+            extra={"path": str(video_out.resolve()), "bytes": video_out.stat().st_size},
+        )
     return out

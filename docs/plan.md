@@ -176,16 +176,28 @@ shape on each of its 15 slides.
 
 ### Phase 5: Hands-free deck
 
-- Slide advance after the narration ends (+ a configurable gap), from the durations in the
-  manifest, so the deck can run as a kiosk or self-running presentation.
-- Incremental runs: only slides whose notes, profile or lexicon changed are re-synthesized
-  (hash in the manifest), to save time and cost.
-- Optional: export to MP4 (PowerPoint `CreateVideo` through COM, Windows only; asynchronous, see
-  the prototype table above). Slides without notes need a default duration in the video.
-- Optional: `azd down` instructions and a cost note in the docs.
+Built in #13 (see [getting-started.md](getting-started.md#6-put-the-narration-in-the-deck)):
+
+- `deck narrate --auto-advance`: each slide's `SlideShowTransition` advances on time, a narrated
+  slide after the audio length PowerPoint reports plus `[deck] advance_gap_seconds`, a slide
+  without narration after `[deck] silent_slide_seconds`; the show is set to use the timings.
+  A click still advances.
+- Incremental runs: `deck synth` (and so `deck narrate`) keeps the audio of every slide whose
+  hash matches the manifest, synthesizes the changed ones, and removes the audio of slides
+  without notes any more. The hash now covers the audio format too, so a format change also
+  counts (manifests from #11 therefore redo every slide once). The manifest lists the narrated
+  copy and video (`narrated_outputs`), which a rerun replaces without `--overwrite`;
+  `--overwrite` now means "make it all again".
+- `deck narrate --video`: `Presentation.CreateVideo` with the timings and narration, polled
+  until done or `[video] timeout_seconds`; it turns `--auto-advance` on. A video of an encrypted
+  deck is not protected, and the tool says so.
+- Cost note and `azd down` in [getting-started.md](getting-started.md#remove-the-resources).
 
 **Done when** a narrated deck runs start to end in Slide Show without a click, and a re-run
-with one changed note re-synthesizes only that slide.
+with one changed note re-synthesizes only that slide. Checked: the synthetic deck's Slide Show
+went 1, 2, 4, 5 (3 is hidden) and ended by itself at 34.6 s, as planned (34.5 s); the MP4 lasts
+34.6 s. Changing slide 4's note and rerunning synthesized slide 4 only and replaced the narrated
+copy and video. A rerun of the real deck reused all 15 slides with no Azure call (11 s).
 
 ## Tuning ideas
 

@@ -37,6 +37,20 @@ cue_pause_ms = 500
 # the slide's content. The shape is also hidden during the show.
 audio_shape_name = "foundry-tts narration"
 off_slide_margin_points = 20
+# deck narrate --auto-advance (and --video): a narrated slide moves on this long after its audio
+# ends; a slide without narration shows this long.
+advance_gap_seconds = 1
+silent_slide_seconds = 5
+
+[video]
+# deck narrate --video: PowerPoint's MP4 export (Presentation.CreateVideo). Height in pixels
+# (720, 1080, 2160), frames per second, quality 1 to 100; how long to wait for it, and how often to
+# check, in seconds.
+vertical_resolution = 1080
+frames_per_second = 30
+quality = 85
+timeout_seconds = 3600
+poll_seconds = 5
 
 [http]
 timeout_seconds = 120
