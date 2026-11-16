@@ -1,0 +1,7 @@
+# Development dependencies: the runtime ones, then lint, tests, and the build backend for the
+# editable install (pip install --no-deps --no-build-isolation -e .).
+-r requirements.in
+pytest
+ruff
+setuptools
+uv

@@ -1,0 +1,22 @@
+# Packaging only: dependencies are pinned with hashes in requirements*.lock (see
+# docs/getting-started.md), so none are listed here. Install for development with
+#   .venv\Scripts\python -m pip install --no-deps --no-build-isolation -e .
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "foundry-tts"
+version = "0.1.0"
+description = "Turn text into speech with Microsoft Foundry and save the audio file."
+requires-python = ">=3.13"
+license = "MIT"
+
+[project.scripts]
+foundry-tts = "foundry_tts.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

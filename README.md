@@ -12,6 +12,24 @@ Generates voice-over audio for PowerPoint slides from their speaker notes, using
 <!-- Keep this section: the few commands that take a new user from a clone to a first run,
      each with where it runs. The full walkthrough stays in docs/getting-started.md. -->
 
+PowerShell (workstation), in the clone, with Python 3.13, the Azure CLI and `azd`:
+
+```powershell
+py -3.13 -m venv .venv
+.venv\Scripts\python -m pip install --require-hashes -r requirements-dev.lock
+.venv\Scripts\python -m pip install --no-deps --no-build-isolation -e .
+az login; azd auth login
+azd env new tts-dev --location eastus2
+azd env set AZURE_PRINCIPAL_ID (az ad signed-in-user show --query id -o tsv)
+azd provision
+azd env get-values | Out-File -Encoding utf8 .env
+.venv\Scripts\foundry-tts --text "Hello from Microsoft Foundry."
+.venv\Scripts\foundry-tts deck narrate .\deck.pptx
+```
+
+The audio files are written to `output\`; for a deck, one per slide and a narrated copy of the
+deck (needs desktop PowerPoint on Windows). Details: [docs/getting-started.md](docs/getting-started.md).
+
 ## Contents
 
 <!-- Keep this README short: the Overview and Quick start above, then this table of contents of
@@ -23,6 +41,7 @@ Generates voice-over audio for PowerPoint slides from their speaker notes, using
 | Page | What it covers |
 |---|---|
 | [docs/getting-started.md](docs/getting-started.md) | **Start here:** build, run and test the project locally |
+| [docs/tts-tuning.md](docs/tts-tuning.md) | Make the voice sound better: voices, pauses, style, tone |
 | [docs/plan.md](docs/plan.md) | The plan: phases, choices, voice tuning ideas |
 | [docs/powershell-prototype.md](docs/powershell-prototype.md) | A tested PowerShell prototype that narrates a deck through PowerPoint (Windows) |
 | [docs/SUPPORT.md](docs/SUPPORT.md) | Questions, bugs, and what support to expect |

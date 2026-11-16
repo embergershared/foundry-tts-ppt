@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Azure Developer CLI project: `azd provision` deploys infra/ (Foundry resource for text to speech).
+# There is no service to deploy: the tool runs on the workstation.
+name: foundry-tts-ppt
+infra:
+  provider: bicep
+  path: infra
+  module: main
