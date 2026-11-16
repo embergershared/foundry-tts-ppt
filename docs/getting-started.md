@@ -187,6 +187,9 @@ Both deck commands write one line on standard output: the full path of what they
 (`manifest.json` for `deck synth`, the narrated copy for `deck narrate`), so a script can use it.
 The logs go to standard error.
 
+**For a demo,** `scripts/Start-Demo.ps1` does it in one go: pick a deck, and its narrated,
+self-running copy starts in Slide Show. See [demo.md](demo.md).
+
 Running it again reuses the unchanged slides' audio (see reruns above) and replaces the narrated
 copy and video it wrote before (they are listed in the manifest), without `--overwrite`. In the
 copy, the audio the tool put in (shapes named `[deck] audio_shape_name`, or carrying its tag) is
