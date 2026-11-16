@@ -19,7 +19,7 @@ built: see [getting-started.md](getting-started.md).
 | Azure calls (phase 1 decision) | **REST with `httpx` for both engines**, not the Speech SDK or the `openai` package. Speech: `https://<region>.tts.speech.microsoft.com/cognitiveservices/v1`, `Authorization: Bearer aad#<resource ID>#<Entra token>` (the format the Speech docs give for Entra tokens, as the prototype does). `gpt-4o-mini-tts`: `https://<resource>.openai.azure.com/openai/v1/audio/speech`, JSON body, plain Entra bearer token | One small HTTP dependency instead of a native SDK and a large client; the same error handling for both; offline tests with `httpx.MockTransport`. |
 | App | Python 3.13 CLI in `src/foundry_tts/`, tests in `tests/` (pytest, offline: the Azure clients are stubbed), ruff | Matches `.github/instructions/python.instructions.md`. |
 | Config | `.env` (gitignored) with `.env.example` committed; read in one module (`config.py`) | Repository rules. |
-| Audio format | MP3, 24 kHz, mono (`audio-24khz-160kbitrate-mono-mp3` / `mp3`) | PowerPoint plays MP3 everywhere; small files. |
+| Audio format | MP3, 24 kHz, mono (`audio-24khz-160kbitrate-mono-mp3` / `mp3`) | PowerPoint plays MP3 everywhere; small files. For long decks, `audio-24khz-96kbitrate-mono-mp3` or `-48kbitrate-` cut the size (20 minutes of narration is about 24 MB at 160 kbps): compare by ear in phase 4. |
 
 ## Phases
 
@@ -49,6 +49,31 @@ Azure; **the Azure call itself hasn't been tested yet**. Use it as the reference
 | Slide timing | `SlideShowTransition.AdvanceOnTime = true`, `AdvanceTime = ceil(MediaFormat.Length ms / 1000) + paddingSeconds` | 5 |
 | Video | `Presentation.CreateVideo(path, UseTimingsAndNarrations=true, DefaultSlideDuration, VertResolution, FramesPerSecond, Quality)` runs in the background: poll `CreateVideoStatus` (3 = done, 4 = failed) with a timeout. A 3-slide test deck gave an 11 s MP4 with sound | 5 |
 | Safety | The source deck is opened read-only without a window and saved under a new name; PowerPoint is quit only if the tool started it | 4 |
+
+### What a real sample deck shows
+
+A real deck, read on 2026-11-11 (15 slides, every slide with notes, none hidden). It is kept
+**outside the repository**: its content is confidential, so nothing from it (file, notes, names,
+audio made from it) is committed, put in an issue or PR, or quoted in the docs.
+
+| Finding | What it means | Phase |
+|---|---|---|
+| The file is encrypted by a **Microsoft Purview sensitivity label** (an OLE compound file holding an `EncryptedPackage` and a DRM transform, not a ZIP) | `python-pptx` can't open it: it reads as a corrupt file. Desktop PowerPoint opens it read-only through COM, as the prototype does. Labeled decks have to be detected and either read through PowerPoint or refused with a clear message | 3, 4 |
+| Notes come back from PowerPoint with paragraphs split by CR and **line breaks inside a paragraph as a vertical tab (char 11)**, plus empty paragraphs and double spaces | Confirms what the prototype handled but never tested. `split_paragraphs` already turns them into paragraphs and spaces | 3 |
+| Notes are written for a presenter: `(Click)` cues, an emoji, `- ` bullets, stray `“` `"` quotes and a trailing ` .` | Read aloud as written today: the `(Click)` cues and the emoji would be spoken. Cleanups for phase 2 markup (below) | 2 |
+| Acronyms spelled out (`IRS`, `W-2`), one said as a word, `&` inside acronyms (`Q&A`, `R&D`), number ranges with an en dash (`10–15`), an email address | Lexicon and `say-as` cases for phase 2 | 2 |
+| About 18,500 characters of notes, roughly 3,000 words: **about 20 minutes of audio**. The longest slide's notes are 2,585 characters (about 2.6 minutes) | Under the 4,096-character `gpt-4o-mini-tts` limit and the 10-minute Speech limit: no splitting needed. At 160 kbps, 20 minutes of MP3 adds about 24 MB to the narrated deck | 3, 4 |
+| No audio, animations, sections or slide timings yet (16:9, 960 × 540 pt) | A clean target for phases 4 and 5 | 4, 5 |
+
+How it's used:
+
+- **Local acceptance deck:** its path is set in a gitignored place (`.env` or a local config),
+  and the tests that use it are opt-in and skipped in CI. It is the only check of a labeled deck.
+- **CI:** a synthetic Contoso deck, built by a test, copies its quirks (CR and vertical tab
+  breaks, empty paragraphs, `(Click)` cues, an emoji, `- ` bullets, stray quotes, acronyms, an
+  en-dash range, an email address) and adds what it lacks: a hidden slide and a slide without
+  notes. A deck that `python-pptx` writes can't be labeled, so CI covers the detection of a
+  labeled file (from its header), not the reading of one.
 
 ### Phase 0: Initialize the repository
 
@@ -228,7 +253,11 @@ Measured on 2026-11-11, `<prosody>` works on HD voices despite that table: see
 ## Open questions
 
 - Which language(s) will the decks use? (Changes the voices to try first.)
-- Is desktop PowerPoint on Windows always available where the tool runs? (Phase 4 decision.)
+- Is desktop PowerPoint on Windows always available where the tool runs? (Phase 3 and 4
+  decisions.) Real decks may carry a sensitivity label, which only PowerPoint can open.
+- ~~Does a narrated copy saved by PowerPoint keep the source deck's sensitivity label?~~
+  Answered in phase 4: the narrated copy of a real labeled deck came out encrypted like the
+  source, and the tool warns if a copy of an encrypted deck isn't.
 - Once the Python tool reaches phase 5, is the PowerShell prototype kept (Windows users without
   Python) or removed?
 
