@@ -16,12 +16,22 @@ output_format = "audio-24khz-160kbitrate-mono-mp3"
 paragraph_break_ms = 400
 # Regional text to speech endpoint; {region} is replaced by FOUNDRY_REGION.
 endpoint_template = "https://{region}.tts.speech.microsoft.com/cognitiveservices/v1"
+# Longest text sent in one request, in characters. Azure Speech makes at most 10 minutes of
+# audio per request and cuts the rest silently; narration runs about 1,000 characters a minute,
+# so 6,000 keeps each request near 6 minutes. Longer text is split between paragraphs (or
+# sentences) and the MP3 parts are joined.
+max_chars_per_request = 6000
 
 [openai]
 # mp3, wav, flac, opus or aac.
 response_format = "mp3"
-# Longest input the /audio/speech API accepts, in characters.
+# Longest input the /audio/speech API accepts, in characters. Longer text is split, as for
+# speech.
 max_input_chars = 4096
+
+[deck]
+# foundry-tts deck: a "(Click)" cue in the speaker notes becomes a pause of this length.
+cue_pause_ms = 500
 
 [http]
 timeout_seconds = 120
