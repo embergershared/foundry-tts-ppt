@@ -183,6 +183,10 @@ In the narrated copy, each slide with notes has one audio shape:
 | `--video`, `--video-out <file>.mp4` | Also export the narrated copy to MP4 (`<deck name>.narrated.mp4`), with PowerPoint's video export (`[video]` settings: 1080p, 30 fps). Turns `--auto-advance` on |
 | `--overwrite` | Make all the audio again and replace any existing file |
 
+Both deck commands write one line on standard output: the full path of what they made
+(`manifest.json` for `deck synth`, the narrated copy for `deck narrate`), so a script can use it.
+The logs go to standard error.
+
 Running it again reuses the unchanged slides' audio (see reruns above) and replaces the narrated
 copy and video it wrote before (they are listed in the manifest), without `--overwrite`. In the
 copy, the audio the tool put in (shapes named `[deck] audio_shape_name`, or carrying its tag) is

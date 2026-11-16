@@ -16,6 +16,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Repository created from [embergershared/repo-template](https://github.com/embergershared/repo-template).
 
 ### Changed
+- `foundry-tts deck synth` and `deck narrate`: they write the full path of what they made on stdout, for scripts; logs stay on stderr (#21).
 - `foundry-tts deck synth` and `deck narrate`: a rerun only synthesizes the slides that changed and replaces the files it wrote before; `--overwrite` makes everything again (#13).
 - `foundry-tts`: text longer than one request is split and the MP3 parts are joined, instead of being refused (#11).
 - `foundry-tts`: profiles replace `--engine`; output files are named after the profile (#10).
