@@ -45,7 +45,7 @@ Azure; **the Azure call itself hasn't been tested yet**. Use it as the reference
 | Pauses | One `<break time="400ms"/>` between notes paragraphs (Dragon HD supports `<break>`) | 2, 3 |
 | Rerun cache | The exact SSML sent is saved as `slide-NNN.ssml`; the audio is reused only when the new SSML is byte-identical. Hashing the final SSML catches note, voice, style, lexicon and markup changes in one value: use it as the manifest hash | 3, 5 |
 | Insert audio | `Shapes.AddMediaObject2(file, LinkToFile=false, SaveWithDocument=true, left, top)`, placed just right of the slide (`left = SlideWidth + 20`), named so a rerun can find and replace it | 4 |
-| Auto-play | `AnimationSettings.PlaySettings.PlayOnEntry = true`, `HideWhileNotPlaying = true` | 4 |
+| Auto-play | `AnimationSettings.PlaySettings.PlayOnEntry = true`, `HideWhileNotPlaying = true`. **Correction (#12):** PowerPoint then adds the play effect *on click*, so the audio waited for a click; the tool moves the effect first and sets it to start after the slide appears | 4 |
 | Slide timing | `SlideShowTransition.AdvanceOnTime = true`, `AdvanceTime = ceil(MediaFormat.Length ms / 1000) + paddingSeconds` | 5 |
 | Video | `Presentation.CreateVideo(path, UseTimingsAndNarrations=true, DefaultSlideDuration, VertResolution, FramesPerSecond, Quality)` runs in the background: poll `CreateVideoStatus` (3 = done, 4 = failed) with a timeout. A 3-slide test deck gave an 11 s MP4 with sound | 5 |
 | Safety | The source deck is opened read-only without a window and saved under a new name; PowerPoint is quit only if the tool started it | 4 |
@@ -148,25 +148,31 @@ cleanup used).
 
 ### Phase 4: Narrate a deck
 
-- `foundry-tts deck narrate deck.pptx`: writes `deck.narrated.pptx` (the original is never
-  changed) with the slide's audio inserted, the speaker icon small and off the slide's
-  visible area or hidden during the show, set to play automatically when the slide shows.
-- **Decision to make at the start of this phase** (logged in `docs/decisions/`):
-  - **A. Open XML with `python-pptx`** (recommended): no Office needed, runs in CI and on any
-    OS. `python-pptx` has no audio API, so the tool adds the media part, the audio shape and
-    the slide's `<p:timing>` (auto-play) itself. Needs checking in PowerPoint by hand.
-  - **B. PowerPoint automation (COM, `pywin32`)**: `Shapes.AddMediaObject2`, play settings
-    set through PowerPoint's own object model; most faithful, but Windows + desktop
-    PowerPoint only, and can't be tested in CI. **Already proven** by the PowerShell
-    prototype (see the table above).
-  - Either way, a deck narrated by the prototype is the reference for option A: unzip it to
-    see the exact media parts, relationships and `<p:timing>` that PowerPoint itself writes,
-    and compare the tool's output with it in tests.
-- Re-running replaces the audio the tool inserted before (shapes it inserted are tagged), and
-  leaves other media alone.
+Built in #12 with **option B, PowerPoint automation**
+([decision 0002](decisions/0002-narrate-decks-through-powerpoint.md); option A, Open XML with
+`python-pptx`, can't write a labeled deck). See
+[getting-started.md](getting-started.md#6-put-the-narration-in-the-deck).
+
+- `foundry-tts deck narrate deck.pptx`: runs `deck synth` (or reuses its output with
+  `--skip-synth`), then opens the deck read-only in PowerPoint, embeds each slide's audio with
+  `Shapes.AddMediaObject2` just right of the slide, hidden during the show, and saves
+  `<deck>.narrated.pptx` with `SaveAs` (always .pptx). The source deck is never changed.
+- Auto-play: `PlayOnEntry` makes PowerPoint add a *click-started* play effect (measured, and what
+  the prototype did); the tool moves it first in the slide's animations and sets it to start
+  after the slide appears, with no delay. The saved XML has `nodeType="afterEffect"`.
+- Reruns: shapes named `[deck] audio_shape_name` or tagged `FOUNDRY_TTS=narration` are removed
+  from every slide first; other media stay.
+- Labeled decks: the narrated copy of a real labeled deck came out encrypted like the source;
+  the tool warns if a copy of an encrypted deck isn't.
+- Tests: the PowerPoint steps run on a fake object model in CI (placement, play settings, the
+  automatic start ahead of the slide's own animations, reruns, errors); an opt-in test narrates
+  the synthetic deck in real PowerPoint with generated tones and checks the saved package.
 
 **Done when** the narrated deck opens in PowerPoint without a repair prompt, each slide plays
-its narration on its own in Slide Show, and tests check the package structure.
+its narration on its own in Slide Show, and tests check the package structure. Checked: the
+synthetic deck's Slide Show played slides 1 and 4 on their own (the player's position moved
+without a click); the narrated real deck reopened in PowerPoint with one auto-starting audio
+shape on each of its 15 slides.
 
 ### Phase 5: Hands-free deck
 

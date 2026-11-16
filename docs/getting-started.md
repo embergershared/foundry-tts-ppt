@@ -148,7 +148,45 @@ requests, the cleanups, and a `hash`, the sha256 of exactly what was sent to Azu
 changes when the notes, the profile, the lexicon or the settings change. Skipped slides are listed
 with their reason.
 
-## 6. Run the checks
+## 6. Put the narration in the deck
+
+```powershell
+.venv\Scripts\foundry-tts deck narrate .\deck.pptx
+.venv\Scripts\foundry-tts deck narrate .\deck.pptx --skip-synth    # reuse the audio already made
+```
+
+`deck narrate` does what `deck synth` does, then saves a copy of the deck,
+`output\<deck name>\<deck name>.narrated.pptx`, with each slide's audio embedded. **It needs
+desktop PowerPoint on Windows**, which does the embedding
+([decision 0002](decisions/0002-narrate-decks-through-powerpoint.md)). The source deck is opened
+read-only and never changed.
+
+In the narrated copy, each slide with notes has one audio shape:
+
+- embedded in the file (not linked), so the deck can be shared on its own;
+- placed just right of the slide (`[deck] off_slide_margin_points`), so it never covers the
+  content, and hidden during the show;
+- set to **start by itself** as the slide shows, before the slide's own click animations.
+
+| Option | What it does |
+|---|---|
+| The `deck synth` options | Make the audio first (same defaults) |
+| `--skip-synth` | Embed the audio and `manifest.json` already in the out folder; no Azure call |
+| `--deck-out <file>.pptx` | Where the narrated copy goes |
+| `--overwrite` | Replace an earlier narrated copy (and the audio, unless `--skip-synth`) |
+
+Running it again on a narrated copy replaces the audio the tool put in (shapes named
+`[deck] audio_shape_name`, or carrying its tag) and leaves other media alone; a slide that has no
+notes any more loses its old narration.
+
+A deck with a **sensitivity label** stays encrypted: PowerPoint saves the copy with the same
+protection (checked on a real labeled deck). If a copy of an encrypted deck comes out
+unencrypted, the tool logs a warning; check its label before sharing it.
+
+Open the copy and start the Slide Show to listen: each slide's narration plays on its own; you
+still click to go to the next slide.
+
+## 7. Run the checks
 
 ```powershell
 .venv\Scripts\python -m ruff check .
@@ -162,18 +200,20 @@ Decks are made by the tests (`tests/decks.py`: a Contoso deck with the quirks of
 Two opt-in checks need desktop PowerPoint on Windows and are skipped otherwise (and in CI):
 
 ```powershell
-$env:FOUNDRY_TTS_POWERPOINT_TESTS = "1"                # read the test deck through PowerPoint
+$env:FOUNDRY_TTS_POWERPOINT_TESTS = "1"                # read and narrate the test deck in PowerPoint
 $env:FOUNDRY_TTS_ACCEPTANCE_DECK = "<path to a real deck>"  # optional: also read a real deck
 .venv\Scripts\python -m pytest -q tests/test_powerpoint.py
 ```
 
-Keep a real deck outside the repository; the check prints nothing from its notes.
+Keep a real deck outside the repository; the check prints nothing from its notes. The narration
+check embeds generated tones (no Azure), then reads the saved package: one audio part per
+narrated slide, set to start by itself, and a rerun that replaces it.
 
 ## Settings
 
 | Where | What |
 |---|---|
-| `foundry-tts.toml` | Voices, language, audio format, pause length, tone instructions, longest request, `(Click)` pause, timeout, output folder |
+| `foundry-tts.toml` | Voices, language, audio format, pause length, tone instructions, longest request, `(Click)` pause, the narration shape's name and place, timeout, output folder |
 | `.env` (from `.env.example`, gitignored) | The deployed resource: `FOUNDRY_RESOURCE_ID`, `FOUNDRY_REGION`, `FOUNDRY_OPENAI_ENDPOINT`, `FOUNDRY_TTS_DEPLOYMENT`, optional `FOUNDRY_SPEECH_ENDPOINT` |
 
 Variables already set in the environment win over `.env`.

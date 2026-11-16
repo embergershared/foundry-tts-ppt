@@ -211,7 +211,9 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
   `--ssml`, or a pipe) → audio file; `foundry-tts deck synth deck.pptx` → one audio file per
   slide + `manifest.json` (`deck_synth.py`; `deck.py` reads slides with `python-pptx`,
   `powerpoint.py` through PowerPoint COM for labeled decks; `notes.py` cleans presenter cues;
-  `speak.py` builds, splits and sends the requests). `cli.py` (options, flow), `config.py` (the only reader of
+  `speak.py` builds, splits and sends the requests); `foundry-tts deck narrate` → a narrated
+  copy (`deck_narrate.py`, `powerpoint.narrate`: PowerPoint embeds the audio, which must be set to
+  start after the slide appears, not on click). `cli.py` (options, flow), `config.py` (the only reader of
   `foundry-tts.toml` and the `FOUNDRY_*` variables / `.env`), `engines.py` (REST calls with
   `httpx`), `profiles.py` (voice profiles, voice families and what each honors),
   `markup.py` (`//` comments, `[pause 1s]`, the pronunciation lexicon), `ssml.py`,
@@ -226,7 +228,8 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
 - **Setup and checks:** see `docs/getting-started.md` (`.venv`, `pip install --no-deps
   --no-build-isolation -e .`, ruff, pytest). Tests are offline (`httpx.MockTransport`, fake
   token). Test decks come from `tests/decks.py` (synthetic Contoso, no real content);
-  `tests/test_powerpoint.py` is opt-in (`FOUNDRY_TTS_POWERPOINT_TESTS=1`, Windows + PowerPoint).
+  `tests/test_powerpoint.py` is opt-in (`FOUNDRY_TTS_POWERPOINT_TESTS=1`, Windows + PowerPoint);
+  in CI the COM steps run on `tests/fake_powerpoint.py`.
 - **Real decks are confidential:** never copy one, its notes, file name or audio into the repo,
   an issue, a PR or a commit. Read one only locally (`FOUNDRY_TTS_ACCEPTANCE_DECK`).
 - **Prototype:** `src/powershell-prototype/` narrates a deck through PowerPoint COM (Windows);

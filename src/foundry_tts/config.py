@@ -33,6 +33,8 @@ class OpenAiSettings:
 @dataclass(frozen=True)
 class DeckSettings:
     cue_pause_ms: int
+    audio_shape_name: str
+    off_slide_margin_points: float
 
 
 @dataclass(frozen=True)
@@ -230,6 +232,8 @@ def load_settings(
         ),
         deck=DeckSettings(
             cue_pause_ms=_value(deck, "cue_pause_ms", int, where("deck")),
+            audio_shape_name=_value(deck, "audio_shape_name", str, where("deck")),
+            off_slide_margin_points=_value(deck, "off_slide_margin_points", float, where("deck")),
         ),
         http=HttpSettings(
             timeout_seconds=_value(http, "timeout_seconds", float, where("http")),

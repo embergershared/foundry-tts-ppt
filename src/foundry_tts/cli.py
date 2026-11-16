@@ -2,6 +2,7 @@
 
 - `foundry-tts --text ...`: text in, one audio file per voice profile out.
 - `foundry-tts deck synth deck.pptx`: one audio file per slide from its speaker notes.
+- `foundry-tts deck narrate deck.pptx`: the same, then a copy of the deck with the audio embedded.
 """
 
 import argparse
@@ -14,7 +15,7 @@ from typing import TextIO
 
 import httpx
 
-from foundry_tts import audio_file, deck, deck_synth, engines, logs, markup, speak
+from foundry_tts import audio_file, deck, deck_narrate, deck_synth, engines, logs, markup, speak
 from foundry_tts.config import DEFAULT_CONFIG_FILE, Settings, load_lexicon, load_settings
 from foundry_tts.errors import TtsError
 from foundry_tts.profiles import SPEECH, Profile
@@ -111,15 +112,42 @@ def build_deck_parser() -> argparse.ArgumentParser:
             "writes slide-01.mp3, ... and manifest.json. The deck is never changed."
         ),
     )
-    synth.add_argument("deck", type=Path, help="The deck (.pptx).")
-    _add_voice_options(synth, several=False)
-    synth.add_argument(
+    _add_synth_options(synth)
+    narrate = commands.add_parser(
+        "narrate",
+        help="deck synth, then a copy of the deck with each slide's audio embedded.",
+        description=(
+            "Makes the audio as deck synth does, then saves <deck>.narrated.pptx next to it with "
+            "each slide's audio embedded and playing on its own. Needs desktop PowerPoint on "
+            "Windows. The deck is never changed."
+        ),
+    )
+    _add_synth_options(narrate)
+    narrate.add_argument(
+        "--deck-out",
+        type=Path,
+        help="Where the narrated deck goes (default: <out folder>/<deck>.narrated.pptx).",
+    )
+    narrate.add_argument(
+        "--skip-synth",
+        action="store_true",
+        help="Embed the audio and manifest already in the out folder; no Azure call.",
+    )
+    return parser
+
+
+def _add_synth_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("deck", type=Path, help="The deck (.pptx).")
+    _add_voice_options(parser, several=False)
+    parser.add_argument(
         "--out",
         type=Path,
         help="Folder for the audio and the manifest (default: output/<deck name>/).",
     )
-    synth.add_argument("--include-hidden", action="store_true", help="Also narrate hidden slides.")
-    synth.add_argument(
+    parser.add_argument(
+        "--include-hidden", action="store_true", help="Also narrate hidden slides."
+    )
+    parser.add_argument(
         "--reader",
         choices=deck.READERS,
         default=deck.AUTO,
@@ -128,8 +156,7 @@ def build_deck_parser() -> argparse.ArgumentParser:
             "Windows; needed for encrypted or labeled decks), or auto (default: from the file)."
         ),
     )
-    _add_run_options(synth)
-    return parser
+    _add_run_options(parser)
 
 
 def _lexicon(settings: Settings, extra: Path | None) -> markup.Lexicon:
@@ -250,23 +277,37 @@ def run_deck(
     get_token: engines.TokenProvider,
     now: datetime,
 ) -> Path:
-    """foundry-tts deck synth: returns the manifest path."""
+    """foundry-tts deck synth (returns the manifest path) or deck narrate (the narrated deck)."""
     profile = settings.profile(args.profile or settings.default_profile).with_overrides(
         voice=args.voice, language=args.language, instructions=args.instructions
     )
-    return deck_synth.synth_deck(
+    folder = args.out or settings.output_folder / args.deck.stem
+
+    def synth() -> Path:
+        return deck_synth.synth_deck(
+            args.deck,
+            profile=profile,
+            settings=settings,
+            lexicon=_lexicon(settings, args.lexicon),
+            out=folder,
+            reader=args.reader,
+            include_hidden=args.include_hidden,
+            overwrite=args.overwrite,
+            save_ssml=args.save_ssml,
+            client=client,
+            get_token=get_token,
+            now=now,
+        )
+
+    if args.command == "synth":
+        return synth()
+    return deck_narrate.narrate_deck(
         args.deck,
-        profile=profile,
         settings=settings,
-        lexicon=_lexicon(settings, args.lexicon),
-        out=args.out,
-        reader=args.reader,
-        include_hidden=args.include_hidden,
+        folder=folder,
+        deck_out=args.deck_out,
         overwrite=args.overwrite,
-        save_ssml=args.save_ssml,
-        client=client,
-        get_token=get_token,
-        now=now,
+        synth=None if args.skip_synth else synth,
     )
 
 
