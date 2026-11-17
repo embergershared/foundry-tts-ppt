@@ -21,3 +21,4 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `foundry-tts`: profiles replace `--engine`; output files are named after the profile (#10).
 - README: it opens with an Overview (what the project does) and a Quick start; the personal-project note is at the bottom (#5).
 - Plan: it covers sensitivity-labeled decks, which `python-pptx` can't open, and the cleanups real speaker notes need before they are spoken (#15).
+- Getting started: a "What it costs" section with what one run of a real 15-slide deck costs per profile, measured from the requests the tool builds (#23).
