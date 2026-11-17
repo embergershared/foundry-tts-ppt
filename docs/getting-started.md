@@ -232,16 +232,53 @@ narrated slide, set to start by itself, and a rerun that replaces it.
 
 Variables already set in the environment win over `.env`.
 
+## What it costs
+
+The Foundry resource has no fixed cost: you pay for what is synthesized. PowerPoint, the MP4
+export and the files stay on your PC and cost nothing in Azure.
+
+- **Azure Speech** (`speech` profiles) is billed per character of each request: the text, its
+  spaces and punctuation, and the SSML markup the tool adds (pauses, rate), everything except
+  the `<speak>` and `<voice>` tags
+  ([billable characters](https://learn.microsoft.com/azure/ai-services/speech-service/text-to-speech#pricing-note)).
+  That's about 14% more than the cleaned notes for the default profile. The voice's name sits
+  in the `<voice>` tag, so it isn't billed: Andrew and Ava cost the same.
+- **`gpt-4o-mini-tts`** (`openai` profiles) is billed per token: the text and the
+  `instructions` in, the audio out. The audio is nearly all of it.
+- The deployed resource is S0: there is no free monthly allowance (that's the Free tier only).
+
+One run of a real 15-slide deck (18,442 characters of cleaned notes, 15 requests, 19 minutes of
+audio), counted from the exact requests the tool builds, at the list prices of the
+[Azure Retail Prices API](https://prices.azure.com/api/retail/prices) for eastus2 in USD on
+2026-11-17:
+
+| Profile | Voice | Billed | Price | One run |
+|---|---|---|---|---|
+| `andrew-hd` (default) or `ava-hd` | Dragon HD (Andrew, male; Ava, female) | 20,951 characters | $22 per 1M characters | **$0.46** |
+| `ava-hd-steady` | Dragon HD | 21,401 characters | $22 per 1M characters | **$0.47** |
+| (none yet) | A standard neural voice | about 21,000 characters | $15 per 1M characters | about $0.31 |
+| `marin-presenter` | `gpt-4o-mini-tts`, Global | about 5,000 text tokens in, 19 minutes of audio out | $0.60 per 1M text tokens, $12 per 1M audio tokens | about $0.29 (estimate) |
+| `harper-narrator` | MAI-Voice-2.1 | 19,121 characters | not published | unknown |
+
+- **Reruns** pay only for the slides whose requests changed: an unchanged deck costs $0, one
+  edited slide about $0.03 (the average slide of that deck, with a Dragon HD voice).
+- **Per minute** of narration: about $0.024 with Dragon HD. Ten such decks cost about $4.60, a
+  hundred about $46.
+- **Estimated and unknown:** `gpt-4o-mini-tts` bills audio in tokens, so its line uses OpenAI's
+  published estimate of about $0.015 per minute and the Dragon HD run's length. MAI-Voice is
+  listed on the [Azure Speech pricing](https://azure.microsoft.com/pricing/details/cognitive-services/speech-services/)
+  page without a price and has no meter in the price API: check the
+  [pricing calculator](https://azure.microsoft.com/pricing/calculator/) before using it at scale.
+- **Your own deck:** count its speaker notes' characters, add about 14% for the markup, and
+  multiply by the voice's price (with a Dragon HD voice, about $0.025 per 1,000 characters of
+  notes).
+- These are list prices: an enterprise agreement may lower them, and prices change.
+
 ## Remove the resources
 
 ```powershell
 azd down --purge
 ```
 
-This deletes the resource group and purges the Foundry resource (no way back).
-
-**Cost.** The Foundry resource has no fixed cost: Azure Speech is billed per character synthesized
-(HD and MAI voices cost more than standard ones) and `gpt-4o-mini-tts` per token; see
-[Azure Speech pricing](https://azure.microsoft.com/pricing/details/cognitive-services/speech-services/).
-A deck of about 18,500 characters of notes is one run's worth; reruns only pay for the slides that
-changed. Remove the resources when you are done.
+This deletes the resource group and purges the Foundry resource (no way back). It costs nothing
+while unused (see [What it costs](#what-it-costs)), but remove it when you are done.
