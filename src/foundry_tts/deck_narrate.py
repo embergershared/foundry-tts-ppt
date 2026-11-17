@@ -12,24 +12,26 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
-from foundry_tts import deck, deck_synth, powerpoint
-from foundry_tts.config import Settings
+from foundry_tts import deck, deck_synth, output_names, powerpoint
+from foundry_tts.config import DeckSettings, Settings
 from foundry_tts.errors import TtsError
 
 log = logging.getLogger(__name__)
 
-NARRATED_SUFFIX = ".narrated.pptx"
-VIDEO_SUFFIX = ".narrated.mp4"
 PPTX = ".pptx"
 MP4 = ".mp4"
 
 
-def narrated_path(deck_path: Path, folder: Path, deck_out: Path | None) -> Path:
-    return deck_out or folder / f"{deck_path.stem}{NARRATED_SUFFIX}"
+def narrated_path(
+    deck_path: Path, folder: Path, deck_out: Path | None, limits: DeckSettings
+) -> Path:
+    if deck_out is not None:
+        return deck_out
+    return output_names.output_file(deck_path, folder, output_names.NARRATED_SUFFIX, limits)
 
 
-def video_path(deck_path: Path, folder: Path) -> Path:
-    return folder / f"{deck_path.stem}{VIDEO_SUFFIX}"
+def video_path(deck_path: Path, folder: Path, limits: DeckSettings) -> Path:
+    return output_names.output_file(deck_path, folder, output_names.VIDEO_SUFFIX, limits)
 
 
 def narrations_from(manifest: dict, folder: Path, deck_path: Path) -> list[powerpoint.Narration]:
@@ -60,9 +62,18 @@ def _earlier_outputs(manifest_path: Path) -> set[str]:
     return set(manifest.get(deck_synth.NARRATED_OUTPUTS, []))
 
 
-def _check_output(path: Path, suffix: str, deck_path: Path, overwrite: bool, ours: set[str]):
+def _check_output(
+    path: Path,
+    suffix: str,
+    option: str,
+    deck_path: Path,
+    overwrite: bool,
+    ours: set[str],
+    limits: DeckSettings,
+):
     if path.suffix.lower() != suffix:
         raise TtsError(f"{path} must end with {suffix}.")
+    output_names.check_fits(path, option, limits)
     if path.resolve() == deck_path.resolve():
         raise TtsError(
             "The narrated copy can't replace the source deck: choose another --deck-out."
@@ -97,12 +108,15 @@ def narrate_deck(
     already in the folder (--skip-synth). `video_out` also exports the copy to MP4, and turns
     auto_advance on.
     """
-    out = narrated_path(deck_path, folder, deck_out)
+    # Every path PowerPoint writes or reads is checked before the first Azure call.
+    limits = settings.deck
+    output_names.check_folder(folder, limits)  # the slide audio PowerPoint embeds is in it
+    out = narrated_path(deck_path, folder, deck_out, limits)
     manifest_path = folder / deck_synth.MANIFEST
     ours = _earlier_outputs(manifest_path)
-    _check_output(out, PPTX, deck_path, overwrite, ours)
+    _check_output(out, PPTX, "--deck-out", deck_path, overwrite, ours, limits)
     if video_out is not None:
-        _check_output(video_out, MP4, deck_path, overwrite, ours)
+        _check_output(video_out, MP4, "--video-out", deck_path, overwrite, ours, limits)
         if not auto_advance:
             log.info("A video needs slide timings: --auto-advance is turned on.")
             auto_advance = True

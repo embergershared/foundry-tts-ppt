@@ -21,3 +21,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `foundry-tts`: profiles replace `--engine`; output files are named after the profile (#10).
 - README: it opens with an Overview (what the project does) and a Quick start; the personal-project note is at the bottom (#5).
 - Plan: it covers sensitivity-labeled decks, which `python-pptx` can't open, and the cleanups real speaker notes need before they are spoken (#15).
+
+### Fixed
+- `foundry-tts deck narrate`: a deck with a long file name no longer fails at the end with "Deck not found". PowerPoint can't save a path over 259 characters and had cut the copy's name to `.narrated.ppt`; long output names are now shortened to fit (`[deck] max_path_chars`, `min_name_chars`), paths that can't fit are refused before any Azure call, and the tool checks the copy and the video are where PowerPoint was told to save them (#25).
