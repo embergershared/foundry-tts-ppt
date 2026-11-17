@@ -7,6 +7,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- Profile `andrew-hd`: a male Dragon HD voice (Andrew), for `--profile` or the demo's `-VoiceProfile` (#21).
 - `scripts/Start-Demo.ps1`: pick a deck in a file picker and get it back ready to play, narrated and self-running, straight in Slide Show; `docs/demo.md` is the runbook for a customer demo (#21).
 - `foundry-tts deck narrate --auto-advance`: the deck runs on its own, each slide moving on when its narration ends; `--video` also exports it to MP4 (#13).
 - `foundry-tts deck narrate deck.pptx`: a copy of the deck with each slide's audio embedded, starting on its own in Slide Show; made through desktop PowerPoint, which keeps a sensitivity label's protection (#12).

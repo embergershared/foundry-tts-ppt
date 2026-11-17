@@ -196,7 +196,11 @@ def test_list_profiles_marks_the_default():
     stdout = io.StringIO()
     cli.list_profiles(load_settings(CONFIG, env={}), stdout)
     lines = stdout.getvalue().splitlines()
-    assert lines[0] == "* ava-hd  speech  en-US-Ava:DragonHDLatestNeural"
+    # Only the default is marked, wherever it sorts.
+    assert [line for line in lines if line.startswith("*")] == [
+        "* ava-hd  speech  en-US-Ava:DragonHDLatestNeural"
+    ]
+    assert "  andrew-hd  speech  en-US-Andrew:DragonHDLatestNeural" in lines
     assert any(
         line.startswith("  marin-presenter  openai  marin  instructions=") for line in lines
     )

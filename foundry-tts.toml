@@ -72,6 +72,11 @@ folder = "output"
 engine = "speech"
 voice = "en-US-Ava:DragonHDLatestNeural"
 
+# A male voice of the same Dragon HD family (same price and markup support as Ava).
+[profiles.andrew-hd]
+engine = "speech"
+voice = "en-US-Andrew:DragonHDLatestNeural"
+
 [profiles.ava-hd-steady]
 engine = "speech"
 voice = "en-US-Ava:DragonHDLatestNeural"
