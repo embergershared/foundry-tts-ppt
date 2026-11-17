@@ -37,6 +37,8 @@ class DeckSettings:
     off_slide_margin_points: float
     advance_gap_seconds: float
     silent_slide_seconds: float
+    max_path_chars: int
+    min_name_chars: int
 
 
 @dataclass(frozen=True)
@@ -249,6 +251,8 @@ def load_settings(
             off_slide_margin_points=_value(deck, "off_slide_margin_points", float, where("deck")),
             advance_gap_seconds=_value(deck, "advance_gap_seconds", float, where("deck")),
             silent_slide_seconds=_value(deck, "silent_slide_seconds", float, where("deck")),
+            max_path_chars=_value(deck, "max_path_chars", int, where("deck")),
+            min_name_chars=_value(deck, "min_name_chars", int, where("deck")),
         ),
         video=VideoSettings(
             vertical_resolution=_value(video, "vertical_resolution", int, where("video")),

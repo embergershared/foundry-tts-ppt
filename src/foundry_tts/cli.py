@@ -15,7 +15,17 @@ from typing import TextIO
 
 import httpx
 
-from foundry_tts import audio_file, deck, deck_narrate, deck_synth, engines, logs, markup, speak
+from foundry_tts import (
+    audio_file,
+    deck,
+    deck_narrate,
+    deck_synth,
+    engines,
+    logs,
+    markup,
+    output_names,
+    speak,
+)
 from foundry_tts.config import DEFAULT_CONFIG_FILE, Settings, load_lexicon, load_settings
 from foundry_tts.errors import TtsError
 from foundry_tts.profiles import SPEECH, Profile
@@ -295,7 +305,7 @@ def run_deck(
     profile = settings.profile(args.profile or settings.default_profile).with_overrides(
         voice=args.voice, language=args.language, instructions=args.instructions
     )
-    folder = args.out or settings.output_folder / args.deck.stem
+    folder = args.out or output_names.default_folder(args.deck, settings)
 
     def synth() -> Path:
         return deck_synth.synth_deck(
@@ -324,7 +334,7 @@ def run_deck(
         synth=None if args.skip_synth else synth,
         auto_advance=args.auto_advance,
         video_out=(
-            args.video_out or deck_narrate.video_path(args.deck, folder)
+            args.video_out or deck_narrate.video_path(args.deck, folder, settings.deck)
             if args.video or args.video_out
             else None
         ),
