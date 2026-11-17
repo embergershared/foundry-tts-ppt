@@ -241,7 +241,8 @@ export and the files stay on your PC and cost nothing in Azure.
   spaces and punctuation, and the SSML markup the tool adds (pauses, rate), everything except
   the `<speak>` and `<voice>` tags
   ([billable characters](https://learn.microsoft.com/azure/ai-services/speech-service/text-to-speech#pricing-note)).
-  That's about 14% more than the cleaned notes for the default profile.
+  That's about 14% more than the cleaned notes for the default profile. The voice's name sits
+  in the `<voice>` tag, so it isn't billed: Andrew and Ava cost the same.
 - **`gpt-4o-mini-tts`** (`openai` profiles) is billed per token: the text and the
   `instructions` in, the audio out. The audio is nearly all of it.
 - The deployed resource is S0: there is no free monthly allowance (that's the Free tier only).
@@ -253,14 +254,14 @@ audio), counted from the exact requests the tool builds, at the list prices of t
 
 | Profile | Voice | Billed | Price | One run |
 |---|---|---|---|---|
-| `ava-hd` (default) | Dragon HD | 20,951 characters | $22 per 1M characters | **$0.46** |
+| `andrew-hd` (default) or `ava-hd` | Dragon HD (Andrew, male; Ava, female) | 20,951 characters | $22 per 1M characters | **$0.46** |
 | `ava-hd-steady` | Dragon HD | 21,401 characters | $22 per 1M characters | **$0.47** |
 | (none yet) | A standard neural voice | about 21,000 characters | $15 per 1M characters | about $0.31 |
 | `marin-presenter` | `gpt-4o-mini-tts`, Global | about 5,000 text tokens in, 19 minutes of audio out | $0.60 per 1M text tokens, $12 per 1M audio tokens | about $0.29 (estimate) |
 | `harper-narrator` | MAI-Voice-2.1 | 19,121 characters | not published | unknown |
 
 - **Reruns** pay only for the slides whose requests changed: an unchanged deck costs $0, one
-  edited slide about $0.03 (the average slide of that deck, with `ava-hd`).
+  edited slide about $0.03 (the average slide of that deck, with a Dragon HD voice).
 - **Per minute** of narration: about $0.024 with Dragon HD. Ten such decks cost about $4.60, a
   hundred about $46.
 - **Estimated and unknown:** `gpt-4o-mini-tts` bills audio in tokens, so its line uses OpenAI's
@@ -269,7 +270,8 @@ audio), counted from the exact requests the tool builds, at the list prices of t
   page without a price and has no meter in the price API: check the
   [pricing calculator](https://azure.microsoft.com/pricing/calculator/) before using it at scale.
 - **Your own deck:** count its speaker notes' characters, add about 14% for the markup, and
-  multiply by the voice's price (with `ava-hd`, about $0.025 per 1,000 characters of notes).
+  multiply by the voice's price (with a Dragon HD voice, about $0.025 per 1,000 characters of
+  notes).
 - These are list prices: an enterprise agreement may lower them, and prices change.
 
 ## Remove the resources
