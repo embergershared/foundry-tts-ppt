@@ -18,7 +18,8 @@
     The deck (.pptx). Without it, a file picker opens.
 
 .PARAMETER VoiceProfile
-    A profile from foundry-tts.toml (`foundry-tts --list-profiles`); the default profile otherwise.
+    A profile from foundry-tts.toml (`foundry-tts --list-profiles`); the default profile otherwise
+    (andrew-hd, a male voice). Pass -VoiceProfile ava-hd for a female voice.
 
 .PARAMETER NoSlideShow
     Make the narrated copy and give its path, without starting the show.

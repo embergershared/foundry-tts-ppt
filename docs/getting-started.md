@@ -77,7 +77,7 @@ Get-Content .\notes.txt | .venv\Scripts\foundry-tts --profile marin-presenter
 | Option | What it does |
 |---|---|
 | `--text`, `--file`, `--ssml`, or a pipe | The text to say (a file is read as UTF-8). `--ssml` sends a hand-written SSML file as is (speech profiles only) |
-| `--profile <name>` | The voice profile from `foundry-tts.toml` (default `ava-hd`). Repeat it to compare profiles: one file each. `--list-profiles` lists them |
+| `--profile <name>` | The voice profile from `foundry-tts.toml` (default `andrew-hd`, a male voice). Repeat it to compare profiles: one file each. `--list-profiles` lists them |
 | `--voice`, `--language`, `--instructions` | Override the profile for this run (`--instructions`: openai profiles) |
 | `--lexicon <file>` | Adds a deck's own pronunciation list (a `[lexicon]` table) to the settings file's |
 | `--out`, `--overwrite` | Where the audio goes (default: `output\<time>-<profile>.mp3`, gitignored; a folder when comparing profiles); existing files are kept unless `--overwrite` |

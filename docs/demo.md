@@ -35,10 +35,10 @@ The customer's deck is never changed.
    ```
 
    `-NoExit` keeps the window open after the run, so you can read an error or the copy's path.
-   To always use one voice, add `-VoiceProfile <name>` at the end of `Arguments`, e.g.
-   `-VoiceProfile andrew-hd` for a male voice (the profiles:
-   `.venv\Scripts\foundry-tts --list-profiles`). A new voice makes every slide's audio again
-   once (a full run's cost); the reruns after it reuse it.
+   The demo speaks with the default profile, `andrew-hd` (a male voice). For another voice, add
+   `-VoiceProfile <name>` at the end of `Arguments`, e.g. `-VoiceProfile ava-hd` for a female
+   voice (the profiles: `.venv\Scripts\foundry-tts --list-profiles`). A new voice makes every
+   slide's audio again once (a full run's cost); the reruns after it reuse it.
 
 2. **Do a full run with the demo deck:** double-click **Narrate a deck**, pick the deck, and
    listen to the whole show.
