@@ -8,7 +8,8 @@ from foundry_tts.errors import TtsError
 
 
 def test_repository_settings_file_loads(settings):
-    assert settings.default_profile == "ava-hd"
+    assert settings.default_profile == "andrew-hd"
+    assert settings.profile("andrew-hd").voice == "en-US-Andrew:DragonHDLatestNeural"
     assert settings.profile("ava-hd").voice == "en-US-Ava:DragonHDLatestNeural"
     assert settings.profile("harper-narrator").style == "narrator"
     assert settings.profile("marin-presenter").engine == "openai"
@@ -97,7 +98,7 @@ def write_config(tmp_path, replace_from: str, replace_to: str) -> Path:
 @pytest.mark.parametrize(
     ("replace_from", "replace_to", "message"),
     [
-        ('profile = "ava-hd"', 'profile = "nobody"', "profile 'nobody' isn't defined"),
+        ('profile = "andrew-hd"', 'profile = "nobody"', "profile 'nobody' isn't defined"),
         ('style = "narrator"', "temperature = 0.5", "HD voices only"),
         ('style = "narrator"', "speed = 1.2", "unknown setting.*speed"),
         ('rate = "-5%"', "rate = -5", "rate .* must be a str"),

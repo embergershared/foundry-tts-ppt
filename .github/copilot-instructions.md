@@ -232,6 +232,10 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
   token). Test decks come from `tests/decks.py` (synthetic Contoso, no real content);
   `tests/test_powerpoint.py` is opt-in (`FOUNDRY_TTS_POWERPOINT_TESTS=1`, Windows + PowerPoint);
   in CI the COM steps run on `tests/fake_powerpoint.py`.
+- **Demo:** `scripts/Start-Demo.ps1` (runbook `docs/demo.md`) picks a deck, runs `deck narrate
+  --auto-advance` from the repository's folder and starts the copy with `POWERPNT.EXE /S`. It
+  reads the copy's path from stdout: the deck commands write only their result's path there
+  (logs on stderr), so keep it that way.
 - **Real decks are confidential:** never copy one, its notes, file name or audio into the repo,
   an issue, a PR or a commit. Read one only locally (`FOUNDRY_TTS_ACCEPTANCE_DECK`).
 - **Prototype:** `src/powershell-prototype/` narrates a deck through PowerPoint COM (Windows);

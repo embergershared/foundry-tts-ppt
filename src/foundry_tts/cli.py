@@ -369,7 +369,7 @@ def deck_main(argv: Sequence[str]) -> int:
     try:
         settings = load_settings(args.config)
         with httpx.Client(timeout=settings.http.timeout_seconds) as client:
-            run_deck(
+            result = run_deck(
                 args,
                 settings,
                 client=client,
@@ -379,4 +379,6 @@ def deck_main(argv: Sequence[str]) -> int:
     except TtsError as error:
         log.error(str(error))
         return 1
+    # The result's path, alone on stdout, for scripts (scripts/Start-Demo.ps1); logs go to stderr.
+    sys.stdout.write(f"{result.resolve()}\n")
     return 0
