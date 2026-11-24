@@ -8,6 +8,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Voice tuning: a `volume` setting (`--volume`, 0 to 100 or relative, `<prosody volume>`, honored by every speech family measured), `rate` as a multiplier (`1.2`, as in the Foundry playground), and sliders for rate, pitch and volume in the demo's tuning window (#31).
+- Demo launcher: it always runs from an up-to-date `main`. It fetches, switches to `main` from any other branch and fast-forwards it; started from a worktree, or when the code changed, it runs the main clone's launcher. It stops rather than lose uncommitted work, warns when offline, and `-NoUpdate` skips it (#35).
+- `foundry-tts voice list`: every Azure Speech voice the resource offers (over a thousand, MAI-Voice and Dragon HD included), with its gender, family, model, status and styles, filtered by `--language`, `--gender`, `--family` and `--search`; `--json` for scripts. The demo's tuning window gets a **Pick…** button next to Voice that searches and filters that list, and shows the styles of the chosen voice under Style (#30).
+- `docs/voice-styles.md`: every style tag and sound effect for Dragon HD and Dragon HD Omni voices, presentation-friendly picks, and how to make a personal or professional custom voice (#32).
 - Demo launcher: a tuning window opens first, with the last run's choices, to pick the deck, the voice profile and its settings, and the run options (auto-advance, MP4, Slide Show); it plays a one-slide sample, saves the settings as a new profile, and checks them before narrating. `-SkipTuning` keeps the file picker (#27).
 - `foundry-tts`: `--style`, `--rate`, `--pitch` and `--temperature` override a profile for one run, as `--voice` does; `deck sample` speaks one slide to try a voice on a deck; `profile list|check|save` give the profiles as JSON and save a new one in `foundry-tts.toml` (#27).
 - Profile `andrew-hd`: a male Dragon HD voice (Andrew) (#21).
@@ -31,4 +34,5 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Getting started: a "What it costs" section with what one run of a real 15-slide deck costs per profile, measured from the requests the tool builds (#23).
 
 ### Fixed
+- Demo tuning window: on a display scaled to 150%, its labels and buttons were cut off once **Listen to a sample** was clicked. The sample was played with WPF, which switches a DPI-unaware PowerShell to DPI-aware; it now plays with Windows' MCI, which leaves the display mode alone (#29).
 - `foundry-tts deck narrate`: a deck with a long file name no longer fails at the end with "Deck not found". PowerPoint can't save a path over 259 characters and had cut the copy's name to `.narrated.ppt`; long output names are now shortened to fit (`[deck] max_path_chars`, `min_name_chars`), paths that can't fit are refused before any Azure call, and the tool checks the copy and the video are where PowerPoint was told to save them (#25).

@@ -4,6 +4,11 @@
 
 .DESCRIPTION
     The demo launcher (docs/demo.md). From anywhere, on Windows with desktop PowerPoint:
+      0. Brings the clone to an up-to-date main (scripts/DemoUpdate.psm1): fetches origin,
+         switches to main if another branch is checked out, fast-forwards it. Started from a
+         linked worktree, or when the code changed, it runs the main clone's launcher instead, so
+         the demo always runs the current main. It stops rather than lose uncommitted work, and
+         without a network it warns and runs the local main. -NoUpdate skips this step.
       1. Checks the tool is installed (.venv) and the Azure sign-in still gives a token.
       2. Opens the tuning window (scripts/DemoTuning.psm1), filled in with the last run's choices:
          pick the deck, the voice profile and its settings (voice, language, style, rate, pitch,
@@ -33,6 +38,10 @@
 .PARAMETER SkipTuning
     No tuning window: the deck from -Deck or a file picker, the profile as it is, auto-advance on.
 
+.PARAMETER NoUpdate
+    Run the code as it is checked out, without switching to or updating main (to rehearse a
+    branch on purpose).
+
 .EXAMPLE
     # PowerShell (workstation), from anywhere
     D:\path\to\foundry-tts-ppt\scripts\Start-Demo.ps1
@@ -45,11 +54,36 @@ param(
     [string] $Deck,
     [string] $VoiceProfile,
     [switch] $NoSlideShow,
-    [switch] $SkipTuning
+    [switch] $SkipTuning,
+    [switch] $NoUpdate
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# The branch the demo always runs from, and the variable that marks the main clone's launcher as
+# already updated (so it doesn't update and restart again).
+$MainBranch = 'main'
+$UpdatedMarker = 'FOUNDRY_TTS_DEMO_UPDATED'
+
+# ---- 0. Run from an up-to-date main ----------------------------------------------------------
+if (-not $NoUpdate -and -not [Environment]::GetEnvironmentVariable($UpdatedMarker)) {
+    Import-Module (Join-Path $PSScriptRoot 'DemoUpdate.psm1') -Force
+    $here = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+    $mainClone = Get-MainCheckout -Root $here
+    $update = Update-CloneToMain -Root $mainClone -Branch $MainBranch
+    Write-Host $update.Summary
+    $elsewhere = -not [string]::Equals($mainClone.TrimEnd('\'), $here.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)
+    if ($elsewhere -or $update.Changed) {
+        # This file may be stale (another worktree, or older than the update): run the main clone's.
+        $launcher = Join-Path $mainClone 'scripts\Start-Demo.ps1'
+        if ($elsewhere) { Write-Host "Started from $here; running the main clone's launcher: $launcher" }
+        [Environment]::SetEnvironmentVariable($UpdatedMarker, '1')
+        try { & $launcher @PSBoundParameters }
+        finally { [Environment]::SetEnvironmentVariable($UpdatedMarker, $null) }
+        return
+    }
+}
 
 # Where Azure AI services tokens come from; the same scope the tool asks DefaultAzureCredential for.
 $CognitiveServicesResource = 'https://cognitiveservices.azure.com'

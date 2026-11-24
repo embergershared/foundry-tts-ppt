@@ -5,6 +5,7 @@
 - `foundry-tts deck narrate deck.pptx`: the same, then a copy of the deck with the audio embedded.
 - `foundry-tts deck sample deck.pptx`: one slide spoken, to try a voice on the deck.
 - `foundry-tts profile list|check|save`: the voice profiles as JSON, for scripts/Start-Demo.ps1.
+- `foundry-tts voice list`: the Azure Speech voices the resource offers, filtered.
 """
 
 import argparse
@@ -29,6 +30,7 @@ from foundry_tts import (
     markup,
     output_names,
     speak,
+    voices,
 )
 from foundry_tts.config import (
     DEFAULT_CONFIG_FILE,
@@ -44,6 +46,8 @@ log = logging.getLogger("foundry_tts")
 
 DECK_COMMAND = "deck"
 PROFILE_COMMAND = "profile"
+VOICE_COMMAND = "voice"
+GENDERS = ("female", "male", "neutral")
 # Profile settings the command line can override, as --<name>.
 OVERRIDES = (
     "voice",
@@ -127,7 +131,8 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         epilog=(
             "Decks: foundry-tts deck synth deck.pptx makes one audio file per slide from its "
-            "speaker notes (foundry-tts deck synth --help)."
+            "speaker notes (foundry-tts deck synth --help). Voices: foundry-tts voice list "
+            "--language en-US lists the voices the resource offers."
         ),
     )
     source = parser.add_mutually_exclusive_group()
@@ -239,6 +244,55 @@ def build_profile_parser() -> argparse.ArgumentParser:
     save.add_argument("name", help="The new profile's name: letters, digits, '-' and '_'.")
     _add_voice_options(save, several=False)
     _add_config_options(save)
+    return parser
+
+
+def _family(value: str) -> str:
+    """--family: a voice family name, case ignored."""
+    for family in voices.FAMILIES:
+        if value.casefold() == family.casefold():
+            return family
+    raise argparse.ArgumentTypeError(
+        f"'{value}' isn't a voice family; use one of: {', '.join(voices.FAMILIES)}."
+    )
+
+
+def build_voice_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=f"foundry-tts {VOICE_COMMAND}",
+        description="The Azure Speech voices the resource offers.",
+    )
+    commands = parser.add_subparsers(dest="command", required=True, metavar="command")
+    listing = commands.add_parser(
+        "list",
+        help="The voices, one per line, or as JSON with --json.",
+        description=(
+            "Asks the resource's voice list API for its voices and prints those that pass the "
+            "filters: name (what a profile's voice or --voice takes), gender, family, status and "
+            "styles (what --style takes)."
+        ),
+    )
+    listing.add_argument(
+        "--language", help="A locale (en-US) or a language (en: every en-* locale)."
+    )
+    listing.add_argument(
+        "--gender", type=str.lower, choices=GENDERS, help="female, male or neutral."
+    )
+    listing.add_argument(
+        "--family",
+        type=_family,
+        help=f"The voice family: {', '.join(repr(family) for family in voices.FAMILIES)}.",
+    )
+    listing.add_argument(
+        "--search",
+        help="Text in the voice's name, styles, personalities or scenarios: Grant, narrator.",
+    )
+    listing.add_argument(
+        "--json",
+        action="store_true",
+        help='Print {"voices": [...]} with every detail (for scripts).',
+    )
+    _add_config_options(listing)
     return parser
 
 
@@ -472,6 +526,51 @@ def run_profile(args: argparse.Namespace, settings: Settings) -> dict:
     return profile.to_dict()
 
 
+def run_voice(
+    args: argparse.Namespace,
+    settings: Settings,
+    *,
+    client: httpx.Client,
+    get_token: engines.TokenProvider,
+) -> list[voices.Voice]:
+    """voice list: the voices that pass the filters."""
+    offered = voices.parse(engines.list_speech_voices(settings, client, get_token))
+    selected = voices.select(
+        offered,
+        language=args.language,
+        gender=args.gender,
+        family=args.family,
+        search=args.search,
+    )
+    log.info("Voices listed.", extra={"offered": len(offered), "selected": len(selected)})
+    return selected
+
+
+def write_voices(selected: list[voices.Voice], stdout: TextIO, *, as_json: bool) -> None:
+    """voice list's output: one line per voice, or {"voices": [...]} for scripts."""
+    if as_json:
+        payload = {"voices": [voice.to_dict() for voice in selected]}
+        stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    else:
+        stdout.writelines(f"{voice.describe()}\n" for voice in selected)
+
+
+def voice_main(argv: Sequence[str], stdout: TextIO) -> int:
+    args = build_voice_parser().parse_args(argv)
+    logs.configure(logging.DEBUG if args.verbose else logging.INFO)
+    try:
+        settings = load_settings(args.config)
+        with httpx.Client(timeout=settings.http.timeout_seconds) as client:
+            selected = run_voice(
+                args, settings, client=client, get_token=engines.azure_token_provider()
+            )
+    except TtsError as error:
+        log.error(str(error))
+        return 1
+    write_voices(selected, stdout, as_json=args.json)
+    return 0
+
+
 def profile_main(argv: Sequence[str], stdout: TextIO) -> int:
     args = build_profile_parser().parse_args(argv)
     logs.configure(logging.DEBUG if args.verbose else logging.INFO)
@@ -491,6 +590,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return deck_main(argv[1:])
     if argv[:1] == [PROFILE_COMMAND]:
         return profile_main(argv[1:], sys.stdout)
+    if argv[:1] == [VOICE_COMMAND]:
+        return voice_main(argv[1:], sys.stdout)
     args = build_parser().parse_args(argv)
     logs.configure(logging.DEBUG if args.verbose else logging.INFO)
     try:
