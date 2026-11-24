@@ -1,10 +1,36 @@
 # Tune the voice
 
-How to make the narration sound better: try voices by ear in the Foundry playground, keep what
+How to make the narration sound better: find a voice (`foundry-tts voice list`) and try it by ear
+in the Foundry playground, keep what
 works as a **profile** in `foundry-tts.toml`, fix how words are said with the **pronunciation
 list**, and shape the text with a little **markup**.
 
-## 1. Try voices in the playground
+## 1. Find a voice
+
+Every Azure Speech voice the resource offers can be used, not only the ones in the shipped
+profiles: put its name in a profile's `voice`, or pass it with `--voice`. `voice list` asks the
+resource for them (over a thousand; an Azure call, free) and prints one per line: the name to use,
+gender, family, status (`GA` or `Preview`) and the styles it knows (what `style` / `--style` take):
+
+```powershell
+.venv\Scripts\foundry-tts voice list --language en-US
+.venv\Scripts\foundry-tts voice list --language en-US --family MAI-Voice --search narrator
+.venv\Scripts\foundry-tts --text "Welcome to Contoso." --voice en-US-Grant:MAI-Voice-2.1 --style narrator
+```
+
+| Option | Keeps the voices… |
+|---|---|
+| `--language` | of a locale (`en-US`) or a language (`en`: every `en-*` locale) |
+| `--gender` | `female`, `male` or `neutral` |
+| `--family` | of a family: `"Dragon HD"`, `"Dragon HD Omni"`, `MAI-Voice` or `standard` (case ignored) |
+| `--search` | with that text in their name, styles, personalities or scenarios (`Grant`, `narrator`) |
+| `--json` | (not a filter) every detail as JSON, for scripts |
+
+The demo's tuning window shows the same list behind **Pick…** ([demo.md](demo.md)). Preview
+voices run only in some regions; the list is the one of your resource's region, so what it shows
+runs there.
+
+## 2. Try voices in the playground
 
 Foundry portal → **Text to speech** ([aka.ms/foundry-text-to-speech](https://aka.ms/foundry-text-to-speech))
 → **Open in playground**. Paste a real paragraph of your notes and compare voices.
@@ -22,7 +48,7 @@ The playground's **Call service** tab shows the SSML it sends. Save it to a file
 .venv\Scripts\foundry-tts --ssml .\tuned.xml --out .\tuned.mp3
 ```
 
-## 2. Profiles
+## 3. Profiles
 
 A profile is a named set of voice settings in `foundry-tts.toml`. `--list-profiles` shows them
 (`*` marks the default, set in `[defaults] profile`):
@@ -55,7 +81,7 @@ temperature = 0.7
 | `engine` | both | `speech` (Azure Speech voices) or `openai` (the `gpt-4o-mini-tts` deployment) |
 | `voice` | both | Speech voice name, or an openai voice: alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin, cedar |
 | `language` | speech | SSML language (default `[speech] language`) |
-| `style` | speech | `<mstts:express-as style>`. MAI Harper, Grant, Sage: `narrator`, `educational`, `audiobook`; HD voices: `calm`, `confident`, `excited`, … ([lists](https://learn.microsoft.com/azure/ai-services/speech-service/high-definition-voices)). The names a voice knows aren't checked |
+| `style` | speech | `<mstts:express-as style>`. MAI Harper, Grant, Sage: `narrator`, `educational`, `audiobook`; HD voices: `calm`, `confident`, `excited`, … ([voice-styles.md](voice-styles.md#styles)). The names a voice knows aren't checked |
 | `rate`, `pitch` | speech | `<prosody>`: `"-5%"`, `"slow"`; `"+2st"`, `"-10Hz"`, `"low"` |
 | `temperature` | speech, HD voices only | 0 to 1; lower is steadier from slide to slide (default 1.0 for Dragon HD) |
 | `instructions` | openai | Plain-English direction of tone, pace and emotion |
@@ -78,7 +104,7 @@ Repeat `--profile`: the same text goes to each, one file each, named after the p
 .venv\Scripts\foundry-tts --file .\notes.txt --profile ava-hd --profile harper-narrator --profile marin-presenter --out .\compare
 ```
 
-## 3. Pronunciation list
+## 4. Pronunciation list
 
 The `[lexicon]` table of `foundry-tts.toml` says how to read a word or an acronym. It applies to
 every profile: speech voices get `<sub alias="…">`, the openai engine gets the replacement text.
@@ -94,14 +120,14 @@ SaaS = "sass"
 For a deck's own words, keep a separate file with a `[lexicon]` table and add it with
 `--lexicon .\deck-words.toml`; its entries win over the settings file's.
 
-## 4. Markup in the text
+## 5. Markup in the text
 
 | Write | Effect |
 |---|---|
 | `// note to self` (a whole line) | Not spoken |
 | `[pause 1s]`, `[pause 750ms]`, `[pause 1.5s]` | A pause (at most 20 s); the openai engine gets "..." instead |
 | A new paragraph (new line) | A pause of `[speech] paragraph_break_ms` (400 ms) |
-| `[excited] Great news!` | Left as is: HD voices read a style word in brackets as a style tag |
+| `[excited] Great news!`, `[laughter]` | Left as is: HD voices read a style or sound effect in brackets as a tag (full list: [voice-styles.md](voice-styles.md)) |
 
 Stress (`*word*`) isn't offered: Azure's `<emphasis>` works on three standard voices only, none of
 the HD or MAI voices.
@@ -110,7 +136,7 @@ Speaker notes read from a deck (`foundry-tts deck synth`) are also cleaned of pr
 `(Click)` becomes a pause, emoji, bullets and quotes are dropped, `10–15` is read "10 to 15". See
 [getting-started.md](getting-started.md#5-narrate-a-decks-speaker-notes).
 
-## 5. What each voice family honors
+## 6. What each voice family honors
 
 The docs and the service disagree, so this was measured on 2026-11-11 (eastus2) by comparing
 audio lengths: an 8 s `<break>`, a `<sub>` with a long alias, `<prosody rate="-40%">`.
@@ -125,7 +151,7 @@ audio lengths: an 8 s `<break>`, a `<sub>` with a long alias, `<prosody rate="-4
 Styles were accepted by all families; whether they change the delivery is for your ear.
 Listen to the result: the service may change, and these checks only measured length.
 
-## 6. Other levers
+## 7. Other levers
 
 | Lever | How | Starting point for slides |
 |---|---|---|

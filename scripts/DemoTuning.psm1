@@ -11,6 +11,7 @@
       foundry-tts profile check  <settings>  the settings checked by the tool's profile rules
       foundry-tts profile save   <name> ...  the settings saved as a new profile
       foundry-tts deck sample    <deck> ...  one slide spoken, to listen to before the whole deck
+      foundry-tts voice list --json          the Azure Speech voices, for the voice picker
     The functions outside Show-TuningWindow don't need a window: tests/scripts/Test-DemoTuning.ps1
     tests them.
 #>
@@ -204,6 +205,173 @@ function Format-SettingValue {
     [string]::Format([cultureinfo]::InvariantCulture, '{0}', $Value)
 }
 
+function ConvertFrom-VoiceListing {
+    <# The voices of foundry-tts voice list --json's output. #>
+    param([string[]] $Lines)
+    $data = ($Lines -join "`n") | ConvertFrom-Json
+    , @($data.voices)
+}
+
+function Select-TuningVoice {
+    <# The voices that pass the picker's filters; an empty filter (or 'All') keeps every voice.
+       The search text is looked for in the name, display name and styles, case ignored. #>
+    param(
+        [object[]] $Voices,
+        [string] $Search = '',
+        [string] $Language = '',
+        [string] $Gender = '',
+        [string] $Family = ''
+    )
+    $needle = $Search.Trim()
+    , @(foreach ($voice in $Voices) {
+            if ($Language -and $Language -ne 'All' -and $voice.locale -ne $Language) { continue }
+            if ($Gender -and $Gender -ne 'All' -and $voice.gender -ne $Gender) { continue }
+            if ($Family -and $Family -ne 'All' -and $voice.family -ne $Family) { continue }
+            if ($needle) {
+                $texts = @($voice.name, $voice.display_name) + @($voice.styles)
+                if (-not ($texts | Where-Object { $_ -and $_.IndexOf($needle, [StringComparison]::OrdinalIgnoreCase) -ge 0 })) { continue }
+            }
+            $voice
+        })
+}
+
+function Get-VoiceFilterValues {
+    <# The picker's choices for one filter (locale, gender or family): 'All', then the values the
+       voices have, sorted. #>
+    param([object[]] $Voices, [Parameter(Mandatory)] [string] $Property)
+    $values = @($Voices | ForEach-Object { $_.$Property } | Where-Object { $_ } | Sort-Object -Unique)
+    , (@('All') + $values)
+}
+
+function Find-TuningVoice {
+    <# The voice of that name in the list (case ignored), or $null. #>
+    param([object[]] $Voices, [string] $Name)
+    if (-not $Name) { return $null }
+    foreach ($voice in $Voices) { if ($voice.name -eq $Name) { return $voice } }
+    $null
+}
+
+function Show-VoicePicker {
+    <# A dialog listing the voices, with a search box and filters. Returns the picked voice's name,
+       or $null when it is closed. #>
+    param(
+        [Parameter(Mandatory)] [object[]] $Voices,
+        [string] $Current = '',
+        [string] $Language = '',
+        $Owner = $null
+    )
+    $dialog = [System.Windows.Forms.Form]::new()
+    $dialog.Text = 'Pick a voice'
+    $dialog.StartPosition = 'CenterParent'
+    # Sizes are given at 96 DPI and scaled to the display, so a 150% display doesn't cut the names.
+    $scale = $dialog.DeviceDpi / 96
+    function ConvertTo-Pixels([int] $Size) { [int] [Math]::Round($Size * $scale) }
+    $dialog.Size = [System.Drawing.Size]::new((ConvertTo-Pixels 1100), (ConvertTo-Pixels 600))
+    $dialog.MinimumSize = [System.Drawing.Size]::new((ConvertTo-Pixels 640), (ConvertTo-Pixels 360))
+    $dialog.MinimizeBox = $false
+    $dialog.Padding = [System.Windows.Forms.Padding]::new(8)
+
+    $filters = [System.Windows.Forms.FlowLayoutPanel]::new()
+    $filters.Dock = 'Top'
+    $filters.AutoSize = $true
+    $filters.WrapContents = $true
+    function New-FilterLabel([string] $Text) {
+        $label = [System.Windows.Forms.Label]::new()
+        $label.Text = $Text
+        $label.AutoSize = $true
+        $label.Margin = [System.Windows.Forms.Padding]::new(6, 7, 2, 0)
+        $label
+    }
+    function New-FilterBox([string] $Property, [string] $Selected) {
+        $box = [System.Windows.Forms.ComboBox]::new()
+        $box.DropDownStyle = 'DropDownList'
+        $box.Width = ConvertTo-Pixels 130
+        foreach ($value in (Get-VoiceFilterValues -Voices $Voices -Property $Property)) { [void] $box.Items.Add($value) }
+        $box.SelectedItem = if ($Selected -and $box.Items.Contains($Selected)) { $Selected } else { 'All' }
+        $box
+    }
+    $search = [System.Windows.Forms.TextBox]::new()
+    $search.Width = ConvertTo-Pixels 220
+    $search.PlaceholderText = 'name or style, e.g. Grant, narrator'
+    $currentVoice = Find-TuningVoice -Voices $Voices -Name $Current
+    $startLanguage = if ($Language) { $Language } elseif ($currentVoice) { $currentVoice.locale } else { '' }
+    $languageBox = New-FilterBox 'locale' $startLanguage
+    $genderBox = New-FilterBox 'gender' ''
+    $familyBox = New-FilterBox 'family' ''
+    $filters.Controls.AddRange(@(
+            (New-FilterLabel 'Search'), $search,
+            (New-FilterLabel 'Language'), $languageBox,
+            (New-FilterLabel 'Gender'), $genderBox,
+            (New-FilterLabel 'Family'), $familyBox))
+
+    $list = [System.Windows.Forms.ListView]::new()
+    $list.Dock = 'Fill'
+    $list.View = 'Details'
+    $list.FullRowSelect = $true
+    $list.MultiSelect = $false
+    $list.HideSelection = $false
+    foreach ($column in @(('Voice', 290), ('Gender', 60), ('Family', 125), ('Model', 130), ('Status', 60), ('Styles', 400))) {
+        [void] $list.Columns.Add($column[0], (ConvertTo-Pixels $column[1]))
+    }
+
+    $bottom = [System.Windows.Forms.FlowLayoutPanel]::new()
+    $bottom.Dock = 'Bottom'
+    $bottom.AutoSize = $true
+    $bottom.FlowDirection = 'RightToLeft'
+    $cancel = [System.Windows.Forms.Button]::new()
+    $cancel.Text = 'Cancel'
+    $cancel.AutoSize = $true
+    $cancel.DialogResult = 'Cancel'
+    $ok = [System.Windows.Forms.Button]::new()
+    $ok.Text = 'Use this voice'
+    $ok.AutoSize = $true
+    $ok.DialogResult = 'OK'
+    $count = [System.Windows.Forms.Label]::new()
+    $count.AutoSize = $true
+    $count.Margin = [System.Windows.Forms.Padding]::new(0, 8, 12, 0)
+    $bottom.Controls.AddRange(@($cancel, $ok, $count))
+
+    # Fill first, then the docked edges, so the list takes the space between them.
+    $dialog.Controls.AddRange(@($list, $filters, $bottom))
+    $dialog.AcceptButton = $ok
+    $dialog.CancelButton = $cancel
+
+    $fill = {
+        $shown = Select-TuningVoice -Voices $Voices -Search $search.Text -Language ([string] $languageBox.SelectedItem) `
+            -Gender ([string] $genderBox.SelectedItem) -Family ([string] $familyBox.SelectedItem)
+        $list.BeginUpdate()
+        try {
+            $list.Items.Clear()
+            foreach ($voice in $shown) {
+                $item = [System.Windows.Forms.ListViewItem]::new([string] $voice.name)
+                foreach ($text in @($voice.gender, $voice.family, $voice.model, $voice.status, (@($voice.styles) -join ', '))) {
+                    [void] $item.SubItems.Add([string] $text)
+                }
+                $item.Tag = [string] $voice.name
+                [void] $list.Items.Add($item)
+                if ($voice.name -eq $Current) { $item.Selected = $true }
+            }
+        }
+        finally { $list.EndUpdate() }
+        if ($list.SelectedItems.Count) { $list.SelectedItems[0].EnsureVisible() }
+        $count.Text = "$($shown.Count) of $($Voices.Count) voices"
+        $ok.Enabled = $list.SelectedItems.Count -gt 0
+    }
+    $search.Add_TextChanged($fill)
+    $languageBox.Add_SelectedIndexChanged($fill)
+    $genderBox.Add_SelectedIndexChanged($fill)
+    $familyBox.Add_SelectedIndexChanged($fill)
+    $list.Add_SelectedIndexChanged({ $ok.Enabled = $list.SelectedItems.Count -gt 0 })
+    $list.Add_DoubleClick({ if ($list.SelectedItems.Count) { $dialog.DialogResult = 'OK'; $dialog.Close() } })
+    & $fill
+
+    try {
+        $result = if ($Owner) { $dialog.ShowDialog($Owner) } else { $dialog.ShowDialog() }
+        if ($result -eq 'OK' -and $list.SelectedItems.Count) { [string] $list.SelectedItems[0].Tag } else { $null }
+    }
+    finally { $dialog.Dispose() }
+}
+
 function Show-TuningWindow {
     <# Opens the window. Returns the choice when Narrate is clicked, $null when it is closed. #>
     param(
@@ -223,6 +391,7 @@ function Show-TuningWindow {
         Default  = $null
         Player   = $false
         Result   = $null
+        Voices   = $null  # foundry-tts voice list, read the first time Pick… is clicked
     }
 
     $form = [System.Windows.Forms.Form]::new()
@@ -290,6 +459,13 @@ function Show-TuningWindow {
 
     # Settings: empty means the profile's value, shown greyed in the box.
     $settingBoxes = [ordered]@{}
+    $pickVoice = [System.Windows.Forms.Button]::new()
+    $pickVoice.Text = 'Pick…'
+    $pickVoice.AutoSize = $true
+    $styleHint = [System.Windows.Forms.Label]::new()
+    $styleHint.AutoSize = $true
+    $styleHint.MaximumSize = [System.Drawing.Size]::new(520, 0)
+    $styleHint.ForeColor = [System.Drawing.SystemColors]::GrayText
     foreach ($name in $script:SettingNames) {
         $box = [System.Windows.Forms.TextBox]::new()
         if ($name -eq 'instructions') {
@@ -299,7 +475,9 @@ function Show-TuningWindow {
         }
         $box.Text = [string] $Choice.Settings[$name]
         $settingBoxes[$name] = $box
-        Add-Row ((Get-Culture).TextInfo.ToTitleCase($name)) $box
+        $extra = if ($name -eq 'voice') { $pickVoice } else { $null }
+        Add-Row ((Get-Culture).TextInfo.ToTitleCase($name)) $box $extra
+        if ($name -eq 'style') { Add-Row '' $styleHint -Wide }
     }
 
     # Run options
@@ -386,6 +564,31 @@ function Show-TuningWindow {
             else { $null }
             $box.PlaceholderText = if ($own) { "profile: $own" } else { $script:SettingHints[$name] }
         }
+        # The voice list is Azure Speech's: an openai profile's voices aren't in it.
+        $pickVoice.Enabled = $item.engine -eq 'speech'
+        Update-StyleHint
+    }
+
+    function Update-StyleHint {
+        # The styles of the voice that will speak (the Voice box, else the profile's), once the
+        # voice list has been read.
+        $item = $state.Profiles[[string] $profileBox.SelectedItem]
+        $styleBox = $settingBoxes['style']
+        $styleBox.AutoCompleteMode = 'None'
+        if (-not $item -or $item.engine -ne 'speech') { $styleHint.Text = ''; return }
+        if ($null -eq $state.Voices) { $styleHint.Text = 'Pick… lists the voices and the styles each one knows.'; return }
+        $name = $settingBoxes['voice'].Text.Trim()
+        if (-not $name) { $name = $item.voice }
+        $voice = Find-TuningVoice -Voices $state.Voices -Name $name
+        if (-not $voice) { $styleHint.Text = "$name isn't in the voice list of the resource."; return }
+        $styles = @($voice.styles)
+        if (-not $styles.Count) { $styleHint.Text = "$($voice.name) has no named styles."; return }
+        $styleHint.Text = "Styles of $($voice.name): $($styles -join ', ')"
+        $source = [System.Windows.Forms.AutoCompleteStringCollection]::new()
+        $source.AddRange([string[]] $styles)
+        $styleBox.AutoCompleteCustomSource = $source
+        $styleBox.AutoCompleteSource = 'CustomSource'
+        $styleBox.AutoCompleteMode = 'SuggestAppend'
     }
 
     function Get-FormChoice {
@@ -440,6 +643,26 @@ function Show-TuningWindow {
     }
 
     $profileBox.Add_SelectedIndexChanged({ Update-ProfileFields })
+    $settingBoxes['voice'].Add_TextChanged({ Update-StyleHint })
+
+    $pickVoice.Add_Click({
+            if ($null -eq $state.Voices) {
+                $result = Invoke-Busy 'Asking Azure Speech for its voices…' @('voice', 'list', '--json')
+                if ($result.ExitCode -ne 0) { Show-Status $result.Error $true; return }
+                $state.Voices = ConvertFrom-VoiceListing -Lines $result.Output
+                Show-Status "$($state.Voices.Count) voices listed."
+            }
+            $item = $state.Profiles[[string] $profileBox.SelectedItem]
+            $current = $settingBoxes['voice'].Text.Trim()
+            if (-not $current) { $current = $item.voice }
+            $picked = Show-VoicePicker -Voices $state.Voices -Current $current `
+                -Language $settingBoxes['language'].Text.Trim() -Owner $form
+            if ($picked) {
+                # The profile's own voice needs no override.
+                $settingBoxes['voice'].Text = if ($picked -eq $item.voice) { '' } else { $picked }
+                Update-StyleHint
+            }
+        })
     Set-Profiles ($listing.Output -join "`n" | ConvertFrom-Json) $Choice.Profile
 
     $listen.Add_Click({
@@ -494,4 +717,5 @@ function Show-TuningWindow {
 
 Export-ModuleMember -Function New-TuningChoice, ConvertTo-VoiceArguments, ConvertTo-NarrateArguments,
 Get-ToolErrorMessage, Invoke-FoundryTts, Read-TuningChoice, Save-TuningChoice, Format-SettingValue,
+ConvertFrom-VoiceListing, Select-TuningVoice, Get-VoiceFilterValues, Find-TuningVoice, Show-VoicePicker,
 Start-SamplePlayback, Stop-SamplePlayback, Get-SamplePlaybackMode, Show-TuningWindow

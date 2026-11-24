@@ -4,9 +4,28 @@ What the customer sees: you pick their deck, and a few seconds later it plays ba
 self-running presentation. Each slide is narrated from its speaker notes by a Microsoft Foundry
 voice and moves on by itself when its narration ends.
 
-One script does it all: `scripts/Start-Demo.ps1`. It opens a tuning window where you pick the
-deck and the voice, runs `foundry-tts deck narrate <deck> --auto-advance`, and starts the narrated
-copy in Slide Show. The customer's deck is never changed.
+One script does it all: `scripts/Start-Demo.ps1`. It brings the clone to an up-to-date `main`,
+opens a tuning window where you pick the deck and the voice, runs
+`foundry-tts deck narrate <deck> --auto-advance`, and starts the narrated copy in Slide Show. The
+customer's deck is never changed.
+
+## Always the current main
+
+The demo always runs the code merged on GitHub, never a work branch or worktree left behind.
+Before anything else, the launcher:
+
+| It finds | It does |
+|---|---|
+| Another branch checked out | Switches to `main` (the branch stays) |
+| `main` behind GitHub | Fetches and fast-forwards it |
+| It was started from a linked worktree | Updates the main clone and runs its launcher instead |
+| The code changed | Runs the updated launcher |
+| No network | Warns, and runs the local `main` |
+| Uncommitted changes on another branch, or `main` with commits of its own | Stops and says what to do: nothing is lost |
+
+The first line of the run says what it did, e.g. `On main, up to date: 214e8de …` or
+`Switched from 'emberger/feature/31-…' to main, now at: …`. To rehearse a branch on purpose,
+start it with `-NoUpdate`.
 
 ## The tuning window
 
@@ -17,7 +36,7 @@ It opens first, filled in with the last run's choices (kept on this PC in
 |---|---|
 | **Deck** | The .pptx to narrate (**Browse…** opens a file picker) |
 | **Voice profile** | A profile from `foundry-tts.toml`; the line under it shows its engine, voice and voice family |
-| **Voice** … **Instructions** | Change one setting for this run. An empty box keeps the profile's value, shown greyed in it. Boxes the profile's voice doesn't accept are off: temperature for voices that aren't Dragon HD, the speech settings for an openai profile, and instructions for a speech one |
+| **Voice** … **Instructions** | Change one setting for this run. **Pick…** next to Voice lists every Azure Speech voice the resource offers (the first click asks Azure, a second or two): search by name or style, filter by language, gender and family, and **Use this voice** fills the box. Once the list is read, the line under Style shows the styles the chosen voice knows, and the Style box completes them. Pick… is off for an openai profile. An empty box keeps the profile's value, shown greyed in it. Boxes the profile's voice doesn't accept are off: temperature for voices that aren't Dragon HD, the speech settings for an openai profile, and instructions for a speech one |
 | **Run** | Auto-advance (on), export an MP4 video (also turns auto-advance on), start the Slide Show |
 | **Listen to a sample** | Speaks the first slide the deck would narrate, with the settings as they are, and plays it. One Azure call: a fraction of a cent |
 | **Save as profile…** | Adds the profile with these settings to `foundry-tts.toml` under a new name, and selects it. Commit it if the team should have it; an existing name is refused |
@@ -126,6 +145,9 @@ deck's label: anyone who has the file can watch it.
 | The show plays but nothing is heard | The sound output: Windows volume, the room's speakers, or "share sound" in the meeting |
 | PowerPoint can't open a labeled deck | Your account must be allowed to open it: open it once in PowerPoint first |
 | The tuning window or file picker doesn't open | Run it without the window: `.\scripts\Start-Demo.ps1 -Deck "<path to the deck>.pptx" -SkipTuning` |
+| "… is on '…' with uncommitted changes …" | The clone was left on a work branch with changes: commit or stash them (`git stash`), then start again. In a hurry: add `-NoUpdate` to run that branch as it is |
+| "main … has … commit(s) that aren't on GitHub" or "couldn't be fast-forwarded" | Changes reach `main` only through a PR: move them to a branch. A profile saved with **Save as profile…** is an uncommitted change to `foundry-tts.toml`: if GitHub's `main` changed that file too, commit the profile through a PR or stash it. In a hurry: `-NoUpdate` |
+| "Could not reach origin" | No network: the demo runs the local `main`, which may be behind GitHub |
 | Anything else, with no time to fix it | Open the copy from the rehearsal yourself (`output\<deck>\<deck>.narrated.pptx`) and press F5 |
 
 ## Afterwards

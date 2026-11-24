@@ -220,7 +220,9 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
   paths on, and cuts a longer name without an error, so long deck names are shortened.
   `foundry-tts deck sample` speaks one slide (`deck_synth.sample_slide`); `foundry-tts profile
   list|check|save` print JSON for scripts (`profile save` appends `[profiles.<name>]` as text, so
-  the file's comments stay). `cli.py` (options, flow; `OVERRIDES` are the profile settings with a
+  the file's comments stay); `foundry-tts voice list` (`voices.py`, `engines.list_speech_voices`)
+  lists the voices the resource offers from Speech's `/cognitiveservices/voices/list` (`--json` for
+  scripts; `[speech] voices_endpoint_template`). `cli.py` (options, flow; `OVERRIDES` are the profile settings with a
   `--<name>` option), `config.py` (the only reader of `foundry-tts.toml` and the `FOUNDRY_*`
   variables / `.env`, and the only writer of `foundry-tts.toml`), `engines.py` (REST calls with
   `httpx`), `profiles.py` (voice profiles, voice families and what each honors),
@@ -238,13 +240,18 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
   token). Test decks come from `tests/decks.py` (synthetic Contoso, no real content);
   `tests/test_powerpoint.py` is opt-in (`FOUNDRY_TTS_POWERPOINT_TESTS=1`, Windows + PowerPoint);
   in CI the COM steps run on `tests/fake_powerpoint.py`.
-- **Demo:** `scripts/Start-Demo.ps1` (runbook `docs/demo.md`) opens the tuning window
+- **Demo:** `scripts/Start-Demo.ps1` (runbook `docs/demo.md`) first brings the clone to an
+  up-to-date `main` (`scripts/DemoUpdate.psm1`; started from a worktree or after an update it runs
+  the main clone's launcher; `-NoUpdate` skips it; tested by `tests/scripts/Test-DemoUpdate.ps1`
+  on scratch repositories), so the demo never runs a stale branch. It then opens the tuning window
   (`scripts/DemoTuning.psm1`, Windows Forms; `-SkipTuning` for a plain file picker), runs `deck
   narrate --auto-advance` from the repository's folder and starts the copy with `POWERPNT.EXE /S`.
   It reads results from stdout: the deck commands write only their result's path there, the
   profile commands only JSON (logs on stderr), so keep it that way. The window repeats no voice
   rule: it asks `profile list` what each voice accepts and `profile check` whether a choice is
   valid, and passes settings as `--<name>=<value>` (a value like `-5%` would read as an option).
+  Its **Pick…** button reads `voice list --json` once and opens a voice picker (`Show-VoicePicker`;
+  sizes scaled by `DeviceDpi / 96`).
   Its logic is tested by `tests/scripts/Test-DemoTuning.ps1` (local, not in CI); its last choices
   stay in `%LOCALAPPDATA%\foundry-tts-ppt\tuning.json`. It plays the sample with MCI
   (`winmm.dll`), never a WPF `MediaPlayer`: creating one makes a DPI-unaware process DPI-aware,

@@ -16,6 +16,8 @@ output_format = "audio-24khz-160kbitrate-mono-mp3"
 paragraph_break_ms = 400
 # Regional text to speech endpoint; {region} is replaced by FOUNDRY_REGION.
 endpoint_template = "https://{region}.tts.speech.microsoft.com/cognitiveservices/v1"
+# The voices the resource offers (foundry-tts voice list); {region} as above.
+voices_endpoint_template = "https://{region}.tts.speech.microsoft.com/cognitiveservices/voices/list"
 # Longest text sent in one request, in characters. Azure Speech makes at most 10 minutes of
 # audio per request and cuts the rest silently; narration runs about 1,000 characters a minute,
 # so 6,000 keeps each request near 6 minutes. Longer text is split between paragraphs (or
