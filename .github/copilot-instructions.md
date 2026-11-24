@@ -240,7 +240,10 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
   token). Test decks come from `tests/decks.py` (synthetic Contoso, no real content);
   `tests/test_powerpoint.py` is opt-in (`FOUNDRY_TTS_POWERPOINT_TESTS=1`, Windows + PowerPoint);
   in CI the COM steps run on `tests/fake_powerpoint.py`.
-- **Demo:** `scripts/Start-Demo.ps1` (runbook `docs/demo.md`) opens the tuning window
+- **Demo:** `scripts/Start-Demo.ps1` (runbook `docs/demo.md`) first brings the clone to an
+  up-to-date `main` (`scripts/DemoUpdate.psm1`; started from a worktree or after an update it runs
+  the main clone's launcher; `-NoUpdate` skips it; tested by `tests/scripts/Test-DemoUpdate.ps1`
+  on scratch repositories), so the demo never runs a stale branch. It then opens the tuning window
   (`scripts/DemoTuning.psm1`, Windows Forms; `-SkipTuning` for a plain file picker), runs `deck
   narrate --auto-advance` from the repository's folder and starts the copy with `POWERPNT.EXE /S`.
   It reads results from stdout: the deck commands write only their result's path there, the

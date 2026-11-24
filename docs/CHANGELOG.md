@@ -7,6 +7,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- Demo launcher: it always runs from an up-to-date `main`. It fetches, switches to `main` from any other branch and fast-forwards it; started from a worktree, or when the code changed, it runs the main clone's launcher. It stops rather than lose uncommitted work, warns when offline, and `-NoUpdate` skips it (#35).
 - `foundry-tts voice list`: every Azure Speech voice the resource offers (over a thousand, MAI-Voice and Dragon HD included), with its gender, family, model, status and styles, filtered by `--language`, `--gender`, `--family` and `--search`; `--json` for scripts. The demo's tuning window gets a **Pick…** button next to Voice that searches and filters that list, and shows the styles of the chosen voice under Style (#30).
 - `docs/voice-styles.md`: every style tag and sound effect for Dragon HD and Dragon HD Omni voices, presentation-friendly picks, and how to make a personal or professional custom voice (#32).
 - Demo launcher: a tuning window opens first, with the last run's choices, to pick the deck, the voice profile and its settings, and the run options (auto-advance, MP4, Slide Show); it plays a one-slide sample, saves the settings as a new profile, and checks them before narrating. `-SkipTuning` keeps the file picker (#27).
