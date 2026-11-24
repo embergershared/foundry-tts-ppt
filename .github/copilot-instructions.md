@@ -251,7 +251,14 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
   (`scripts/DemoTuning.psm1`, Windows Forms; `-SkipTuning` for a plain file picker), runs `deck
   narrate --auto-advance` from the repository's folder and starts the copy with `POWERPNT.EXE /S`.
   It reads results from stdout: the deck commands write only their result's path there, the
-  profile commands only JSON (logs on stderr), so keep it that way. The window repeats no voice
+  profile commands only JSON (logs on stderr), so keep it that way. Every tool call goes through
+  `Invoke-FoundryTts`, which streams the stderr JSON lines to the console (`Format-ToolLogLine`)
+  and appends them unchanged to `%LOCALAPPDATA%\foundry-tts-ppt\logs\demo-<yyyyMMdd>.log`
+  (`Set-DemoLog`); the launcher's own steps use `Write-DemoLog` (same JSON shape, logger `demo`),
+  never bare `Write-Host`. Window buttons run inside `Invoke-WindowAction`, so a failure lands in
+  the status line and the log. The tool exits 1 on a `TtsError` and 3 (`EXIT_UNEXPECTED`) on any
+  other exception, logged as one ERROR line with its traceback (`cli.main`): never let a bare
+  traceback reach stderr. The window repeats no voice
   rule: it asks `profile list` what each voice accepts and `profile check` whether a choice is
   valid, and passes settings as `--<name>=<value>` (a value like `-5%` would read as an option).
   Its **Pick…** button reads `voice list --json` once and opens a voice picker (`Show-VoicePicker`;

@@ -132,8 +132,16 @@ deck's label: anyone who has the file can watch it.
 
 ## If something goes wrong
 
+Everything the launcher and the window do is in the console as it happens, one readable line per
+step (`11:15:21 INFO    Slide audio saved.  slide=1 path=…`, errors in red, warnings in yellow),
+and in a log file a day: `%LOCALAPPDATA%\foundry-tts-ppt\logs\demo-<yyyyMMdd>.log`, the tool's
+JSON lines unchanged, with the launcher's own (`"logger": "demo"`). A failure in the window shows
+in its status line, in red, with where the details are; the launcher ends with "The demo stopped:
+…" and the log file's path. The log names the decks: it stays on this PC, like `output\`.
+
 | You see | Do this |
 |---|---|
+| "Unexpected error: …" | A bug in the tool, not a setting: the traceback is under that line in the console and in the log file. Open an issue with it (without the deck's name), and use the rehearsal's copy meanwhile |
 | The window closes at once, or says running scripts is disabled | The PC's execution policy blocks scripts (`Get-ExecutionPolicy -List`). A file from a ZIP download is blocked until `Unblock-File` is run on it; a policy set by your organization is theirs to change |
 | "The Azure sign-in has expired or is missing" | `az login`, then double-click the shortcut again |
 | `foundry-tts is not installed in …\.venv` | [getting-started.md](getting-started.md), section 2 |

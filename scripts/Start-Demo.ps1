@@ -20,6 +20,9 @@
          repository's folder, so foundry-tts.toml and .env are found. The source deck is never
          changed; the narrated copy goes to output\<deck name>\<deck name>.narrated.pptx. A rerun
          reuses the audio of the slides whose notes and settings didn't change (no Azure call).
+      Every step and every log line of the tool is shown in the console as it comes and kept in
+      %LOCALAPPDATA%\foundry-tts-ppt\logs\demo-<yyyyMMdd>.log; a failure ends with "The demo
+      stopped: ..." and that file's path (docs/demo.md, "If something goes wrong").
       4. Starts the narrated copy in Slide Show: each slide's narration plays on its own and the
          deck moves on when it ends. After the last slide, PowerPoint shows its black "End of
          slide show" screen until a click or Esc.
@@ -90,8 +93,14 @@ $CognitiveServicesResource = 'https://cognitiveservices.azure.com'
 $PowerPointAppPath = 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\powerpnt.exe'
 # The tuning window's last choices: on this computer only, never in the repository.
 $TuningStatePath = Join-Path $env:LOCALAPPDATA 'foundry-tts-ppt\tuning.json'
+# One log file a day: the tool's JSON log lines and the launcher's own, on this computer only (they
+# name the decks, which may be a customer's).
+$LogFolder = Join-Path $env:LOCALAPPDATA 'foundry-tts-ppt\logs'
+$LogPath = Join-Path $LogFolder "demo-$(Get-Date -Format 'yyyyMMdd').log"
 
 Import-Module (Join-Path $PSScriptRoot 'DemoTuning.psm1') -Force
+Set-DemoLog -Path $LogPath
+Write-Host "Logs: the console and $LogPath"
 
 function Select-Deck {
     if ([Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
@@ -120,71 +129,78 @@ function Assert-AzureSignIn {
     if ($LASTEXITCODE -ne 0 -or -not $expires) {
         throw 'The Azure sign-in has expired or is missing: run `az login`, then start the demo again.'
     }
-    Write-Host "Azure sign-in OK (token valid until $expires)."
+    Write-DemoLog INFO 'Azure sign-in OK.' @{ token_valid_until = "$expires" }
 }
 
-$root = Resolve-Path (Join-Path $PSScriptRoot '..')
-$tool = Join-Path $root '.venv\Scripts\foundry-tts.exe'
-if (-not (Test-Path $tool)) {
-    throw "foundry-tts is not installed in $root\.venv: follow docs/getting-started.md, section 2."
-}
+# Any failure from here on is logged with where it happened, shown in red with the log file, and
+# ends the launcher with exit code 1: never a bare PowerShell error and nothing kept.
+try {
+    $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $tool = Join-Path $root '.venv\Scripts\foundry-tts.exe'
+    if (-not (Test-Path -LiteralPath $tool)) {
+        throw "foundry-tts is not installed in $root\.venv: follow docs/getting-started.md, section 2."
+    }
+    Write-DemoLog INFO 'Demo launcher started.' ([ordered]@{
+            root = $root; powershell = "$($PSVersionTable.PSVersion)"; skip_tuning = [bool] $SkipTuning
+        })
 
-# Before the window: its sample calls Azure Speech.
-Assert-AzureSignIn
+    # Before the window: its sample calls Azure Speech.
+    Assert-AzureSignIn
 
-if ($SkipTuning) {
-    if (-not $Deck) {
-        $Deck = Select-Deck
+    if ($SkipTuning) {
         if (-not $Deck) {
-            Write-Host 'No deck picked: nothing to do.'
+            $Deck = Select-Deck
+            if (-not $Deck) {
+                Write-DemoLog INFO 'No deck picked: nothing to do.'
+                return
+            }
+        }
+        $choice = New-TuningChoice -Deck $Deck -VoiceProfile $VoiceProfile
+        $choice.SlideShow = -not $NoSlideShow
+    }
+    else {
+        $choice = Read-TuningChoice -Path $TuningStatePath
+        if ($Deck) { $choice.Deck = $Deck }
+        if ($VoiceProfile) { $choice.Profile = $VoiceProfile }
+        if ($NoSlideShow) { $choice.SlideShow = $false }
+        $choice = Show-TuningWindow -Tool $tool -Root $root -Choice $choice
+        if (-not $choice) {
+            Write-DemoLog INFO 'Tuning window closed: nothing to do.'
             return
         }
+        Save-TuningChoice -Choice $choice -Path $TuningStatePath
     }
-    $choice = New-TuningChoice -Deck $Deck -VoiceProfile $VoiceProfile
-    $choice.SlideShow = -not $NoSlideShow
-}
-else {
-    $choice = Read-TuningChoice -Path $TuningStatePath
-    if ($Deck) { $choice.Deck = $Deck }
-    if ($VoiceProfile) { $choice.Profile = $VoiceProfile }
-    if ($NoSlideShow) { $choice.SlideShow = $false }
-    $choice = Show-TuningWindow -Tool $tool -Root $root -Choice $choice
-    if (-not $choice) {
-        Write-Host 'Tuning window closed: nothing to do.'
-        return
+    if (-not (Test-Path -LiteralPath $choice.Deck -PathType Leaf)) { throw "No deck at $($choice.Deck)." }
+    $choice.Deck = (Resolve-Path -LiteralPath $choice.Deck).Path
+    if ([System.IO.Path]::GetExtension($choice.Deck) -ne '.pptx') { throw "Not a .pptx deck: $($choice.Deck)" }
+
+    Write-DemoLog INFO 'Narrating the deck (the logs follow).' @{ deck = $choice.Deck }
+    # stdout is the narrated copy's path; the logs are shown and kept as they come.
+    $result = Invoke-FoundryTts -Tool $tool -Root $root -Arguments (ConvertTo-NarrateArguments -Choice $choice)
+    if ($result.ExitCode -ne 0) { throw "foundry-tts deck narrate failed: $($result.Error)" }
+
+    $narrated = @($result.Output)[-1]
+    if (-not $narrated -or -not (Test-Path -LiteralPath $narrated -PathType Leaf)) {
+        throw "foundry-tts didn't give the narrated copy's path (got: '$($result.Output -join ' | ')')."
     }
-    Save-TuningChoice -Choice $choice -Path $TuningStatePath
-}
-$choice.Deck = (Resolve-Path -LiteralPath $choice.Deck).Path
-if ([System.IO.Path]::GetExtension($choice.Deck) -ne '.pptx') { throw "Not a .pptx deck: $($choice.Deck)" }
+    Write-DemoLog INFO 'Ready to play.' @{ narrated = $narrated }
 
-$arguments = ConvertTo-NarrateArguments -Choice $choice
-
-Write-Host "Narrating $([System.IO.Path]::GetFileName($choice.Deck)) (the logs follow)..."
-Write-Host "foundry-tts $($arguments -join ' ')"
-$savedUtf8 = $env:PYTHONUTF8
-$env:PYTHONUTF8 = '1'  # the copy's path on stdout stays readable if it has accents
-Push-Location $root
-try {
-    # stdout is the narrated copy's path; the logs (stderr) go to the console as they come.
-    $output = & $tool @arguments
-    if ($LASTEXITCODE -ne 0) { throw "foundry-tts deck narrate failed (exit $LASTEXITCODE): see the error above." }
+    if (-not $choice.SlideShow) { return }
+    $powerPoint = (Get-ItemProperty -Path $PowerPointAppPath -ErrorAction SilentlyContinue).'(default)'
+    if (-not $powerPoint -or -not (Test-Path -LiteralPath $powerPoint)) {
+        throw "Desktop PowerPoint was not found; open the narrated copy yourself: $narrated"
+    }
+    # /S starts the Slide Show directly.
+    Start-Process -FilePath $powerPoint -ArgumentList '/S', "`"$narrated`""
+    Write-DemoLog INFO 'Slide Show started.'
 }
-finally {
-    Pop-Location
-    $env:PYTHONUTF8 = $savedUtf8
+catch {
+    # Where it stopped goes to the file; the console gets the message in red below.
+    Write-DemoLog ERROR "The demo stopped: $($_.Exception.Message)" ([ordered]@{
+            error_type = $_.Exception.GetType().FullName
+            at         = $_.InvocationInfo.PositionMessage
+            stack      = $_.ScriptStackTrace
+        }) -FileOnly
+    Write-Host "`nThe demo stopped: $($_.Exception.Message)`n$(Get-LogHint)" -ForegroundColor Red
+    exit 1
 }
-
-$narrated = @($output)[-1]
-if (-not $narrated -or -not (Test-Path -LiteralPath $narrated)) {
-    throw "foundry-tts didn't give the narrated copy's path (got: '$output')."
-}
-Write-Host "Ready to play: $narrated"
-
-if (-not $choice.SlideShow) { return }
-$powerPoint = (Get-ItemProperty -Path $PowerPointAppPath -ErrorAction SilentlyContinue).'(default)'
-if (-not $powerPoint -or -not (Test-Path $powerPoint)) {
-    throw "Desktop PowerPoint was not found; open the narrated copy yourself: $narrated"
-}
-# /S starts the Slide Show directly.
-Start-Process -FilePath $powerPoint -ArgumentList '/S', "`"$narrated`""

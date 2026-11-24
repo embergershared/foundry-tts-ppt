@@ -48,6 +48,9 @@ DECK_COMMAND = "deck"
 PROFILE_COMMAND = "profile"
 VOICE_COMMAND = "voice"
 GENDERS = ("female", "male", "neutral")
+# Exit codes: argparse uses 2 for a usage error.
+EXIT_FAILED = 1
+EXIT_UNEXPECTED = 3
 # Profile settings the command line can override, as --<name>.
 OVERRIDES = (
     "voice",
@@ -566,7 +569,7 @@ def voice_main(argv: Sequence[str], stdout: TextIO) -> int:
             )
     except TtsError as error:
         log.error(str(error))
-        return 1
+        return EXIT_FAILED
     write_voices(selected, stdout, as_json=args.json)
     return 0
 
@@ -579,13 +582,29 @@ def profile_main(argv: Sequence[str], stdout: TextIO) -> int:
         result = run_profile(args, load_settings(args.config, env={}))
     except TtsError as error:
         log.error(str(error))
-        return 1
+        return EXIT_FAILED
     stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
     return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Runs the command. A failure the tool reports (TtsError) exits with EXIT_FAILED; any other
+    error is a bug: it is logged as one ERROR line, with its traceback, and exits with
+    EXIT_UNEXPECTED, so scripts reading the JSON logs still get a message."""
     argv = list(sys.argv[1:] if argv is None else argv)
+    try:
+        return _run_command(argv)
+    except Exception as error:  # noqa: BLE001 -- the last stop before a bare traceback
+        if not logging.getLogger().handlers:
+            logs.configure(logging.INFO)  # failed before the command set up its logging
+        log.exception(
+            f"Unexpected error: {type(error).__name__}: {error}",
+            extra={"command": " ".join(argv[:2]), "error_type": type(error).__name__},
+        )
+        return EXIT_UNEXPECTED
+
+
+def _run_command(argv: list[str]) -> int:
     if argv[:1] == [DECK_COMMAND]:
         return deck_main(argv[1:])
     if argv[:1] == [PROFILE_COMMAND]:
@@ -610,7 +629,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
     except TtsError as error:
         log.error(str(error))
-        return 1
+        return EXIT_FAILED
     return 0
 
 
@@ -629,7 +648,7 @@ def deck_main(argv: Sequence[str]) -> int:
             )
     except TtsError as error:
         log.error(str(error))
-        return 1
+        return EXIT_FAILED
     # The result's path, alone on stdout, for scripts (scripts/Start-Demo.ps1); logs go to stderr.
     sys.stdout.write(f"{result.resolve()}\n")
     return 0

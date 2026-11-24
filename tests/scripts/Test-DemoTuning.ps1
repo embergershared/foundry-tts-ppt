@@ -113,6 +113,73 @@ Assert-Equal 'foundry-tts profile check: error: argument --rate: expected one ar
 (Get-ToolErrorMessage -Lines @('usage: foundry-tts profile check [-h]', 'foundry-tts profile check: error: argument --rate: expected one argument')) 'an argparse error: its last line'
 Assert-True ($null -eq (Get-ToolErrorMessage -Lines @('{"level": "INFO", "message": "ok"}'))) 'no error: nothing'
 
+# 2b. Logs (issue #40): the tool's JSON lines shown readable in the console and kept in a file.
+$info = Format-ToolLogLine -Line '{"time": "2026-11-24T16:08:27.182945+00:00", "level": "INFO", "logger": "foundry_tts.deck_synth", "message": "Sample saved.", "slide": 1, "path": "C:\\out\\Contoso – Final\\sample.mp3", "settings": {}, "seconds": 12.46}'
+$clock = [datetimeoffset]::Parse('2026-11-24T16:08:27+00:00').ToLocalTime().ToString('HH:mm:ss')
+Assert-Equal "$clock INFO    Sample saved.  slide=1 path=`"C:\out\Contoso – Final\sample.mp3`" settings={} seconds=12.46" $info.Text 'a log line: local time, level, message, then its fields'
+Assert-Equal 'INFO' $info.Level 'a log line: its level'
+$crash = Format-ToolLogLine -Line '{"time": "2026-11-24T16:08:27+00:00", "level": "ERROR", "logger": "foundry_tts", "message": "Unexpected error: FileNotFoundError: x", "command": "deck sample", "exception": "Traceback (most recent call last):\n  File \"a.py\"\nFileNotFoundError: x"}'
+Assert-Equal 'ERROR' $crash.Level 'an error line: ERROR'
+Assert-True ($crash.Text -like "*Unexpected error: FileNotFoundError: x  command=`"deck sample`"`n    Traceback (most recent call last):`n      File `"a.py`"`n    FileNotFoundError: x") 'an error line: the traceback indented below it'
+Assert-Equal 'Traceback (most recent call last):' (Format-ToolLogLine -Line 'Traceback (most recent call last):').Text 'a line that isn''t JSON: as it is'
+Assert-Equal '' (Format-ToolLogLine -Line '{not json').Level 'broken JSON: shown as it is, no level'
+Assert-Equal '--:--:-- WARNING Odd.' (Format-ToolLogLine -Line '{"time": "t", "level": "WARNING", "message": "Odd."}').Text 'a time that can''t be read: dashes'
+$french = [cultureinfo]::CurrentCulture
+try {
+    [cultureinfo]::CurrentCulture = 'fr-FR'
+    Assert-True ((Format-ToolLogLine -Line '{"time": "t", "level": "INFO", "message": "m", "seconds": 1.5}').Text -like '*seconds=1.5') 'a number field with a dot, even in fr-FR'
+}
+finally { [cultureinfo]::CurrentCulture = $french }
+
+$logFile = Join-Path $WorkFolder 'logs\demo-test.log'
+Set-DemoLog -Path $logFile
+Assert-Equal $logFile (Get-DemoLog) 'the log file is set'
+Assert-True ((Get-LogHint) -like "*$logFile") 'the error hint names the log file'
+Write-DemoLog INFO 'Launcher step.' @{ deck = 'C:\decks\Présentation – Contoso .pptx' } 6>$null
+$kept = @(Get-Content -LiteralPath $logFile -Encoding utf8)
+$entry = $kept[-1] | ConvertFrom-Json
+Assert-True ($entry.logger -eq 'demo' -and $entry.level -eq 'INFO' -and $entry.message -eq 'Launcher step.') 'a launcher line: JSON in the file, logger demo'
+Assert-Equal 'C:\decks\Présentation – Contoso .pptx' $entry.deck 'a launcher line: accents and dashes kept in the file'
+$shown = Write-DemoLog ERROR 'Stopped.' -FileOnly 6>&1
+Assert-True (-not $shown -and (Get-Content -LiteralPath $logFile -Encoding utf8 -Tail 1 | ConvertFrom-Json).message -eq 'Stopped.') 'FileOnly: in the file, not in the console'
+
+# A fake tool (Python, no Azure) that logs on stderr and gives a path with an en dash and an accent
+# on stdout: the lines are shown as they come, kept in the file, and the path comes back unchanged.
+$fake = Join-Path $WorkFolder 'fake_tool.py'
+Set-Content -LiteralPath $fake -Encoding utf8 -Value @'
+import json, sys
+def log(level, message, **fields):
+    print(json.dumps({"time": "2026-11-24T16:00:00+00:00", "level": level, "logger": "fake", "message": message, **fields}, ensure_ascii=False), file=sys.stderr, flush=True)
+mode = sys.argv[1]
+log("INFO", "Started.", mode=mode)
+if mode == "ok":
+    print("C:\\out\\Présentation – Contoso\\sample.mp3", flush=True)
+    log("INFO", "Done.")
+    sys.exit(0)
+if mode == "error":
+    log("ERROR", "Slide 9 doesn't exist.")
+    sys.exit(1)
+print("Traceback (most recent call last):", file=sys.stderr)
+print("RuntimeError: boom", file=sys.stderr)
+sys.exit(3)
+'@
+$python = Join-Path $root '.venv\Scripts\python.exe'
+$lines = [System.Collections.Generic.List[int]]::new()
+$ok = Invoke-FoundryTts -Tool $python -Root $root -Arguments @($fake, 'ok') -OnLine { $lines.Add(1) } 6>$null
+Assert-True ($ok.ExitCode -eq 0 -and $null -eq $ok.Error) 'fake tool ok: exit 0, no error'
+Assert-Equal @('C:\out\Présentation – Contoso\sample.mp3') $ok.Output 'fake tool ok: the stdout path comes back with its accent and en dash'
+Assert-Equal 3 $lines.Count 'fake tool ok: OnLine runs for every line (2 logs, 1 output)'
+$kept = @(Get-Content -LiteralPath $logFile -Encoding utf8 | ForEach-Object { $_ | ConvertFrom-Json })
+Assert-Equal @('Running foundry-tts.', 'Started.', 'Done.', 'foundry-tts done.') @($kept | Select-Object -Last 4 | ForEach-Object message) 'fake tool ok: the run and its logs kept in the file, in order'
+$failed = Invoke-FoundryTts -Tool $python -Root $root -Arguments @($fake, 'error') 6>$null
+Assert-True ($failed.ExitCode -eq 1 -and $failed.Error -eq "Slide 9 doesn't exist.") 'fake tool error: the tool''s message'
+$lastLine = Get-Content -LiteralPath $logFile -Encoding utf8 -Tail 1 | ConvertFrom-Json
+Assert-True ($lastLine.level -eq 'ERROR' -and $lastLine.exit_code -eq 1) 'fake tool error: the failure and its exit code logged'
+$crashed = Invoke-FoundryTts -Tool $python -Root $root -Arguments @($fake, 'crash') 6>$null
+Assert-True ($crashed.ExitCode -eq 3 -and $crashed.Error -eq 'RuntimeError: boom') 'fake tool crash without JSON: its last line'
+Assert-True ((Get-Content -LiteralPath $logFile -Encoding utf8 -Raw) -match 'Traceback \(most recent call last\):') 'fake tool crash: the raw lines kept in the file'
+Set-DemoLog -Path $null
+
 # 3. Last choices
 $statePath = Join-Path $WorkFolder 'state\tuning.json'
 $fresh = Read-TuningChoice -Path $statePath
@@ -144,6 +211,13 @@ $accented = New-TuningChoice -VoiceProfile 'marin-presenter'
 $accented.Settings['instructions'] = 'Calme et posé.'
 $utf8 = Invoke-FoundryTts -Tool $tool -Root $root -Arguments (@('profile', 'check') + (ConvertTo-VoiceArguments -Choice $accented))
 Assert-Equal 'Calme et posé.' (($utf8.Output -join "`n" | ConvertFrom-Json).settings.instructions) 'accents come back from the tool unchanged'
+# The real tool's logs reach the log file (issue #40: they used to be dropped).
+$realLog = Join-Path $WorkFolder 'logs\real.log'
+Set-DemoLog -Path $realLog
+$null = Invoke-FoundryTts -Tool $tool -Root $root -Arguments (@('profile', 'check') + (ConvertTo-VoiceArguments -Choice $refused)) 6>$null
+$realLines = @(Get-Content -LiteralPath $realLog -Encoding utf8 | ForEach-Object { $_ | ConvertFrom-Json })
+Assert-True (@($realLines | Where-Object { $_.logger -like 'foundry_tts*' -and $_.level -eq 'ERROR' -and $_.message -like "*rate doesn't apply*" }).Count -eq 1) 'the real tool''s error line is kept in the log file'
+Set-DemoLog -Path $null
 
 # 6. Sample playback (issue #29): MCI plays it, WPF is never loaded (it would switch a DPI-unaware
 #    process to DPI-aware and break the window's layout), and stopping releases the file.
