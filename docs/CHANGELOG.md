@@ -7,6 +7,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- Demo launcher: a tuning window opens first, with the last run's choices, to pick the deck, the voice profile and its settings, and the run options (auto-advance, MP4, Slide Show); it plays a one-slide sample, saves the settings as a new profile, and checks them before narrating. `-SkipTuning` keeps the file picker (#27).
+- `foundry-tts`: `--style`, `--rate`, `--pitch` and `--temperature` override a profile for one run, as `--voice` does; `deck sample` speaks one slide to try a voice on a deck; `profile list|check|save` give the profiles as JSON and save a new one in `foundry-tts.toml` (#27).
 - Profile `andrew-hd`: a male Dragon HD voice (Andrew) (#21).
 - `scripts/Start-Demo.ps1`: pick a deck in a file picker and get it back ready to play, narrated and self-running, straight in Slide Show; `docs/demo.md` is the runbook for a customer demo (#21).
 - `foundry-tts deck narrate --auto-advance`: the deck runs on its own, each slide moving on when its narration ends; `--video` also exports it to MP4 (#13).

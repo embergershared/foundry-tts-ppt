@@ -217,8 +217,12 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
   exports an MP4). Reruns reuse a slide's audio when its manifest hash (audio format + request
   bodies) is unchanged. `output_names.py` names what the deck commands write: PowerPoint saves
   and opens only paths up to 259 characters (`[deck] max_path_chars`), even with Windows long
-  paths on, and cuts a longer name without an error, so long deck names are shortened. `cli.py` (options, flow), `config.py` (the only reader of
-  `foundry-tts.toml` and the `FOUNDRY_*` variables / `.env`), `engines.py` (REST calls with
+  paths on, and cuts a longer name without an error, so long deck names are shortened.
+  `foundry-tts deck sample` speaks one slide (`deck_synth.sample_slide`); `foundry-tts profile
+  list|check|save` print JSON for scripts (`profile save` appends `[profiles.<name>]` as text, so
+  the file's comments stay). `cli.py` (options, flow; `OVERRIDES` are the profile settings with a
+  `--<name>` option), `config.py` (the only reader of `foundry-tts.toml` and the `FOUNDRY_*`
+  variables / `.env`, and the only writer of `foundry-tts.toml`), `engines.py` (REST calls with
   `httpx`), `profiles.py` (voice profiles, voice families and what each honors),
   `markup.py` (`//` comments, `[pause 1s]`, the pronunciation lexicon), `ssml.py`,
   `audio_file.py`, `logs.py` (JSON lines on stderr).
@@ -234,10 +238,15 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
   token). Test decks come from `tests/decks.py` (synthetic Contoso, no real content);
   `tests/test_powerpoint.py` is opt-in (`FOUNDRY_TTS_POWERPOINT_TESTS=1`, Windows + PowerPoint);
   in CI the COM steps run on `tests/fake_powerpoint.py`.
-- **Demo:** `scripts/Start-Demo.ps1` (runbook `docs/demo.md`) picks a deck, runs `deck narrate
-  --auto-advance` from the repository's folder and starts the copy with `POWERPNT.EXE /S`. It
-  reads the copy's path from stdout: the deck commands write only their result's path there
-  (logs on stderr), so keep it that way.
+- **Demo:** `scripts/Start-Demo.ps1` (runbook `docs/demo.md`) opens the tuning window
+  (`scripts/DemoTuning.psm1`, Windows Forms; `-SkipTuning` for a plain file picker), runs `deck
+  narrate --auto-advance` from the repository's folder and starts the copy with `POWERPNT.EXE /S`.
+  It reads results from stdout: the deck commands write only their result's path there, the
+  profile commands only JSON (logs on stderr), so keep it that way. The window repeats no voice
+  rule: it asks `profile list` what each voice accepts and `profile check` whether a choice is
+  valid, and passes settings as `--<name>=<value>` (a value like `-5%` would read as an option).
+  Its logic is tested by `tests/scripts/Test-DemoTuning.ps1` (local, not in CI); its last choices
+  stay in `%LOCALAPPDATA%\foundry-tts-ppt\tuning.json`.
 - **Real decks are confidential:** never copy one, its notes, file name or audio into the repo,
   an issue, a PR or a commit. Read one only locally (`FOUNDRY_TTS_ACCEPTANCE_DECK`).
 - **Prototype:** `src/powershell-prototype/` narrates a deck through PowerPoint COM (Windows);

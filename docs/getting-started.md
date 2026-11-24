@@ -78,7 +78,7 @@ Get-Content .\notes.txt | .venv\Scripts\foundry-tts --profile marin-presenter
 |---|---|
 | `--text`, `--file`, `--ssml`, or a pipe | The text to say (a file is read as UTF-8). `--ssml` sends a hand-written SSML file as is (speech profiles only) |
 | `--profile <name>` | The voice profile from `foundry-tts.toml` (default `andrew-hd`, a male voice). Repeat it to compare profiles: one file each. `--list-profiles` lists them |
-| `--voice`, `--language`, `--instructions` | Override the profile for this run (`--instructions`: openai profiles) |
+| `--voice`, `--language`, `--style`, `--rate`, `--pitch`, `--temperature`, `--instructions` | Override the profile for this run, checked by the same rules as a profile ([tts-tuning.md](tts-tuning.md)): `--instructions` for openai profiles, the others for speech ones, `--temperature` for HD voices only. A value that starts with `-` needs the `=` form: `--rate=-5%` |
 | `--lexicon <file>` | Adds a deck's own pronunciation list (a `[lexicon]` table) to the settings file's |
 | `--out`, `--overwrite` | Where the audio goes (default: `output\<time>-<profile>.mp3`, gitignored; a folder when comparing profiles); existing files are kept unless `--overwrite` |
 | `--save-ssml` | Also saves the SSML sent to Speech next to the audio, to reuse or tune it |
@@ -127,7 +127,7 @@ The `//` comments, `[pause 1s]` and the pronunciation list of
 
 | Option | What it does |
 |---|---|
-| `--profile`, `--voice`, `--language`, `--instructions`, `--lexicon` | As for text, one profile |
+| `--profile`, the overrides (`--voice` … `--instructions`), `--lexicon` | As for text, one profile |
 | `--out <folder>` | Where the audio and the manifest go (default `output\<deck name>\`) |
 | `--include-hidden` | Also narrate hidden slides |
 | `--reader auto\|python-pptx\|powerpoint` | How the deck is read (below) |
@@ -153,6 +153,23 @@ request change. Skipped slides are listed with their reason.
 whose hash is the same as in the manifest keeps its audio, with no Azure call; a slide whose notes
 changed is synthesized again; the audio of a slide that has no notes any more is removed. Files
 the tool didn't write are never replaced without `--overwrite`, which makes all the audio again.
+
+**Try a voice on one slide first.** `deck sample` speaks one slide, cleaned as `deck synth` would,
+to `output\<deck name>\sample.mp3` (replaced each time; `deck synth` ignores it). It takes the
+same `--profile`, overrides, `--lexicon`, `--out` and `--reader` options; by default it speaks the
+first slide `deck synth` would narrate, or `--slide <n>` (even a hidden one):
+
+```powershell
+.venv\Scripts\foundry-tts deck sample .\deck.pptx --profile ava-hd --rate=-5% --style narrator
+```
+
+**Profiles for scripts.** `foundry-tts profile list` prints the profiles as JSON: each one's
+engine, voice, voice family, settings, and the settings its voice accepts (`applies`).
+`profile check` (with `--profile` and the overrides) prints the profile as a run would use it, or
+exits with code 1 and the reason. `profile save <name>` (same options) adds it to
+`foundry-tts.toml` as `[profiles.<name>]`, above the pronunciation list, keeping the file's
+comments; a name already used is refused. None of them calls Azure. The demo's tuning window
+([demo.md](demo.md)) is built on them.
 
 ## 6. Put the narration in the deck
 

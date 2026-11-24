@@ -3,12 +3,16 @@
 - `foundry-tts --text ...`: text in, one audio file per voice profile out.
 - `foundry-tts deck synth deck.pptx`: one audio file per slide from its speaker notes.
 - `foundry-tts deck narrate deck.pptx`: the same, then a copy of the deck with the audio embedded.
+- `foundry-tts deck sample deck.pptx`: one slide spoken, to try a voice on the deck.
+- `foundry-tts profile list|check|save`: the voice profiles as JSON, for scripts/Start-Demo.ps1.
 """
 
 import argparse
+import json
 import logging
 import sys
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import TextIO
@@ -26,13 +30,22 @@ from foundry_tts import (
     output_names,
     speak,
 )
-from foundry_tts.config import DEFAULT_CONFIG_FILE, Settings, load_lexicon, load_settings
+from foundry_tts.config import (
+    DEFAULT_CONFIG_FILE,
+    Settings,
+    load_lexicon,
+    load_settings,
+    save_profile,
+)
 from foundry_tts.errors import TtsError
 from foundry_tts.profiles import SPEECH, Profile
 
 log = logging.getLogger("foundry_tts")
 
 DECK_COMMAND = "deck"
+PROFILE_COMMAND = "profile"
+# Profile settings the command line can override, as --<name>.
+OVERRIDES = ("voice", "language", "style", "rate", "pitch", "temperature", "instructions")
 
 
 def _add_voice_options(parser: argparse.ArgumentParser, *, several: bool) -> None:
@@ -48,6 +61,20 @@ def _add_voice_options(parser: argparse.ArgumentParser, *, several: bool) -> Non
     )
     parser.add_argument("--voice", help="Voice name; overrides the profile's voice.")
     parser.add_argument("--language", help="SSML language, e.g. fr-FR (speech profiles).")
+    parser.add_argument(
+        "--style", help="Speaking style (<mstts:express-as>), e.g. narrator (speech profiles)."
+    )
+    # A value starting with "-" needs the = form (--rate=-5%), or argparse reads it as an option.
+    parser.add_argument(
+        "--rate",
+        help="Speaking rate, e.g. --rate=-5%%, +10%% or slow (speech profiles).",
+    )
+    parser.add_argument("--pitch", help="Pitch, e.g. +2st, --pitch=-5%% or low (speech profiles).")
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        help="0 to 1, lower is steadier (speech profiles with an HD voice).",
+    )
     parser.add_argument(
         "--instructions", help="Direction of tone and pace (openai profiles); overrides it."
     )
@@ -65,6 +92,10 @@ def _add_run_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Also save the SSML sent to Azure Speech next to the audio (.ssml).",
     )
+    _add_config_options(parser)
+
+
+def _add_config_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--config",
         type=Path,
@@ -157,19 +188,54 @@ def build_deck_parser() -> argparse.ArgumentParser:
         help="Also export the narrated deck to MP4 (<deck>.narrated.mp4); implies --auto-advance.",
     )
     narrate.add_argument("--video-out", type=Path, help="Where the MP4 goes; implies --video.")
+    sample = commands.add_parser(
+        "sample",
+        help="Speak one slide's notes with the chosen voice, to try it before the whole deck.",
+        description=(
+            "Speaks the notes of the first slide deck synth would narrate (or --slide), cleaned "
+            "as deck synth cleans them, and saves <out folder>/sample.mp3, replaced each time."
+        ),
+    )
+    _add_deck_input(sample)
+    sample.add_argument(
+        "--slide", type=int, help="The slide to speak, even if hidden (default: the first)."
+    )
+    _add_config_options(sample)
     return parser
 
 
-def _add_synth_options(parser: argparse.ArgumentParser) -> None:
+def build_profile_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=f"foundry-tts {PROFILE_COMMAND}",
+        description="The voice profiles of the settings file, as JSON on stdout (for scripts).",
+    )
+    commands = parser.add_subparsers(dest="command", required=True, metavar="command")
+    listing = commands.add_parser(
+        "list", help="Every profile, the default, and the settings each profile's voice accepts."
+    )
+    _add_config_options(listing)
+    check = commands.add_parser(
+        "check", help="The profile with the command-line overrides applied, or the reason not."
+    )
+    _add_voice_options(check, several=False)
+    _add_config_options(check)
+    save = commands.add_parser(
+        "save",
+        help="Save the profile with the overrides applied as a new profile in the settings file.",
+    )
+    save.add_argument("name", help="The new profile's name: letters, digits, '-' and '_'.")
+    _add_voice_options(save, several=False)
+    _add_config_options(save)
+    return parser
+
+
+def _add_deck_input(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("deck", type=Path, help="The deck (.pptx).")
     _add_voice_options(parser, several=False)
     parser.add_argument(
         "--out",
         type=Path,
         help="Folder for the audio and the manifest (default: output/<deck name>/).",
-    )
-    parser.add_argument(
-        "--include-hidden", action="store_true", help="Also narrate hidden slides."
     )
     parser.add_argument(
         "--reader",
@@ -179,6 +245,13 @@ def _add_synth_options(parser: argparse.ArgumentParser) -> None:
             "How the deck is read: python-pptx (any OS), powerpoint (desktop PowerPoint on "
             "Windows; needed for encrypted or labeled decks), or auto (default: from the file)."
         ),
+    )
+
+
+def _add_synth_options(parser: argparse.ArgumentParser) -> None:
+    _add_deck_input(parser)
+    parser.add_argument(
+        "--include-hidden", action="store_true", help="Also narrate hidden slides."
     )
     _add_run_options(parser)
 
@@ -190,18 +263,27 @@ def _lexicon(settings: Settings, extra: Path | None) -> markup.Lexicon:
     return markup.Lexicon(entries)
 
 
+def _overrides(args: argparse.Namespace) -> dict:
+    """The profile settings given on the command line (None: keep the profile's)."""
+    return {key: getattr(args, key) for key in OVERRIDES}
+
+
+def chosen_profile(args: argparse.Namespace, settings: Settings) -> Profile:
+    """The one profile of a deck or profile command, with the command-line overrides applied."""
+    return settings.profile(args.profile or settings.default_profile).with_overrides(
+        **_overrides(args)
+    )
+
+
 def choose_profiles(args: argparse.Namespace, settings: Settings) -> list[Profile]:
     """The profiles to run, in the order given, with the command-line overrides applied."""
     names = args.profile or [settings.default_profile]
     if len(set(names)) != len(names):
         raise TtsError("A profile is given more than once.")
-    overrides = {
-        "voice": args.voice,
-        "language": args.language,
-        "instructions": args.instructions,
-    }
+    overrides = _overrides(args)
     if len(names) > 1 and any(value is not None for value in overrides.values()):
-        raise TtsError("--voice, --language and --instructions apply to one profile only.")
+        options = ", ".join(f"--{key}" for key in OVERRIDES)
+        raise TtsError(f"{options} apply to one profile only.")
     profiles = [settings.profile(name).with_overrides(**overrides) for name in names]
     if args.ssml is not None:
         if len(profiles) > 1:
@@ -301,11 +383,23 @@ def run_deck(
     get_token: engines.TokenProvider,
     now: datetime,
 ) -> Path:
-    """foundry-tts deck synth (returns the manifest path) or deck narrate (the narrated deck)."""
-    profile = settings.profile(args.profile or settings.default_profile).with_overrides(
-        voice=args.voice, language=args.language, instructions=args.instructions
-    )
+    """deck synth (returns the manifest path), deck narrate (the narrated deck) or deck sample
+    (the sample's audio)."""
+    profile = chosen_profile(args, settings)
     folder = args.out or output_names.default_folder(args.deck, settings)
+
+    if args.command == "sample":
+        return deck_synth.sample_slide(
+            args.deck,
+            profile=profile,
+            settings=settings,
+            lexicon=_lexicon(settings, args.lexicon),
+            out=folder,
+            reader=args.reader,
+            slide_number=args.slide,
+            client=client,
+            get_token=get_token,
+        )
 
     def synth() -> Path:
         return deck_synth.synth_deck(
@@ -347,10 +441,43 @@ def list_profiles(settings: Settings, stdout: TextIO) -> None:
         stdout.write(f"{marker} {settings.profiles[name].describe()}\n")
 
 
+def run_profile(args: argparse.Namespace, settings: Settings) -> dict:
+    """profile list, check or save; the JSON to print."""
+    if args.command == "list":
+        return {
+            "default": settings.default_profile,
+            "profiles": [settings.profiles[name].to_dict() for name in sorted(settings.profiles)],
+        }
+    profile = chosen_profile(args, settings)
+    if args.command == "save":
+        profile = replace(profile, name=args.name)
+        save_profile(args.config, profile)
+        log.info(
+            "Profile saved.",
+            extra={"profile": profile.name, "path": str(args.config.resolve())},
+        )
+    return profile.to_dict()
+
+
+def profile_main(argv: Sequence[str], stdout: TextIO) -> int:
+    args = build_profile_parser().parse_args(argv)
+    logs.configure(logging.DEBUG if args.verbose else logging.INFO)
+    try:
+        # No Azure call: the environment variables are not needed, so .env isn't read.
+        result = run_profile(args, load_settings(args.config, env={}))
+    except TtsError as error:
+        log.error(str(error))
+        return 1
+    stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] == [DECK_COMMAND]:
         return deck_main(argv[1:])
+    if argv[:1] == [PROFILE_COMMAND]:
+        return profile_main(argv[1:], sys.stdout)
     args = build_parser().parse_args(argv)
     logs.configure(logging.DEBUG if args.verbose else logging.INFO)
     try:

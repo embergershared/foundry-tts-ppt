@@ -40,6 +40,8 @@ _PITCH = re.compile(rf"^({_RELATIVE}(%|st|Hz)|x-low|low|medium|high|x-high|defau
 
 _SPEECH_ONLY = ("language", "style", "rate", "pitch", "temperature")
 _OPENAI_ONLY = ("instructions",)
+# The settings a profile may set besides engine and voice, in the order they are shown.
+OPTIONAL_SETTINGS = ("language", "style", "rate", "pitch", "temperature", "instructions")
 
 
 @dataclass(frozen=True)
@@ -60,15 +62,27 @@ class Profile:
         return voice_family(self.voice) if self.engine == SPEECH else None
 
     def with_overrides(
-        self, *, voice: str | None, language: str | None, instructions: str | None
+        self,
+        *,
+        voice: str | None = None,
+        language: str | None = None,
+        instructions: str | None = None,
+        style: str | None = None,
+        rate: str | None = None,
+        pitch: str | None = None,
+        temperature: float | None = None,
     ) -> "Profile":
-        """The profile with command-line overrides applied, checked again."""
+        """The profile with command-line overrides applied (None keeps a value), checked again."""
         changes = {
             key: value
             for key, value in (
                 ("voice", voice),
                 ("language", language),
                 ("instructions", instructions),
+                ("style", style),
+                ("rate", rate),
+                ("pitch", pitch),
+                ("temperature", temperature),
             )
             if value is not None
         }
@@ -78,14 +92,27 @@ class Profile:
         validate(profile)
         return profile
 
+    def settings(self) -> dict[str, str | float]:
+        """The optional settings the profile sets, by name (as in foundry-tts.toml)."""
+        return {
+            key: value for key in OPTIONAL_SETTINGS if (value := getattr(self, key)) is not None
+        }
+
     def describe(self) -> str:
         """One line for --list-profiles."""
-        details = [
-            f"{key}={value}"
-            for key in ("language", "style", "rate", "pitch", "temperature", "instructions")
-            if (value := getattr(self, key)) is not None
-        ]
+        details = [f"{key}={value}" for key, value in self.settings().items()]
         return "  ".join([self.name, self.engine, self.voice, *details])
+
+    def to_dict(self) -> dict:
+        """The profile and what its voice supports, for scripts (profile list --json)."""
+        return {
+            "name": self.name,
+            "engine": self.engine,
+            "voice": self.voice,
+            "family": self.family,
+            "settings": self.settings(),
+            "applies": sorted(_OPENAI_ONLY if self.engine == OPENAI else _speech_settings(self)),
+        }
 
 
 def voice_family(voice: str) -> str:
@@ -97,6 +124,14 @@ def voice_family(voice: str) -> str:
     if ":dragonhd" in name:
         return DRAGON_HD
     return STANDARD
+
+
+def _speech_settings(profile: Profile) -> set[str]:
+    """The settings a speech profile's voice family accepts."""
+    applies = set(_SPEECH_ONLY)
+    if profile.family not in _TEMPERATURE_FAMILIES:
+        applies.discard("temperature")
+    return applies
 
 
 def honors_break(profile: Profile) -> bool:
