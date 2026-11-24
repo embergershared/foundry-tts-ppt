@@ -82,19 +82,22 @@ temperature = 0.7
 | `voice` | both | Speech voice name, or an openai voice: alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin, cedar |
 | `language` | speech | SSML language (default `[speech] language`) |
 | `style` | speech | `<mstts:express-as style>`. MAI Harper, Grant, Sage: `narrator`, `educational`, `audiobook`; HD voices: `calm`, `confident`, `excited`, … ([voice-styles.md](voice-styles.md#styles)). The names a voice knows aren't checked |
-| `rate`, `pitch` | speech | `<prosody>`: `"-5%"`, `"slow"`; `"+2st"`, `"-10Hz"`, `"low"` |
+| `rate`, `pitch` | speech | `<prosody>`. Rate: a multiplier `"1.2"` (0.5 to 2, `1` is normal, as in the Foundry playground), `"-5%"`, `"slow"`. Pitch: `"+2st"`, `"-10Hz"`, `"+10%"`, `"low"` |
+| `volume` | speech | `<prosody volume>`: an absolute `"80"` (0 to 100; 100, the loudest, is normal), a relative `"-10"` or `"+5%"`, or `"soft"`, `"loud"`, … |
 | `temperature` | speech, HD voices only | 0 to 1; lower is steadier from slide to slide (default 1.0 for Dragon HD) |
 | `instructions` | openai | Plain-English direction of tone, pace and emotion |
 
 Each setting has an option that overrides the profile for one run: `--voice`, `--language`,
-`--style`, `--rate`, `--pitch`, `--temperature`, `--instructions`. A value that starts with `-`
-needs the `=` form (`--rate=-5%`, `--pitch=-2st`). A profile, or an override, that sets something
-its engine or voice doesn't support (temperature on a MAI-Voice voice, `style` on the openai
-engine, a rate like `slower`) is refused before anything is sent to Azure.
+`--style`, `--rate`, `--pitch`, `--volume`, `--temperature`, `--instructions`. A value that starts
+with `-` needs the `=` form (`--rate=-5%`, `--volume=-10`). A profile, or an override, that sets
+something its engine or voice doesn't support (temperature on a MAI-Voice voice, `style` on the
+openai engine, a rate like `slower` or `3`, a volume of `120`) is refused before anything is sent
+to Azure.
 
 To tune by ear on a real deck, use the demo's tuning window ([demo.md](demo.md#the-tuning-window)):
-it changes these settings in boxes, speaks one slide with them (`foundry-tts deck sample`), and
-saves the result as a new profile (`foundry-tts profile save <name>`).
+it changes these settings in boxes, with sliders for rate, pitch and volume like the playground's
+Tuning panel, speaks one slide with them (`foundry-tts deck sample`), and saves the result as a
+new profile (`foundry-tts profile save <name>`).
 
 ### Compare profiles
 
@@ -141,12 +144,16 @@ Speaker notes read from a deck (`foundry-tts deck synth`) are also cleaned of pr
 The docs and the service disagree, so this was measured on 2026-11-11 (eastus2) by comparing
 audio lengths: an 8 s `<break>`, a `<sub>` with a long alias, `<prosody rate="-40%">`.
 
-| Family | Pauses (`<break>`) | Pronunciation (`<sub>`) | Rate (`<prosody>`) | Temperature |
-|---|---|---|---|---|
-| Dragon HD | Yes | Yes | Yes (docs say no) | Yes |
-| Dragon HD Omni | Yes (docs say no) | Yes | Yes (docs say no) | Yes |
-| MAI-Voice | **Ignored**: the tool sends none and warns about `[pause]` | Yes | Yes | Refused |
-| Standard | Yes | Yes | Yes | Refused |
+| Family | Pauses (`<break>`) | Pronunciation (`<sub>`) | Rate (`<prosody>`) | Volume (`<prosody>`) | Temperature |
+|---|---|---|---|---|---|
+| Dragon HD | Yes | Yes | Yes (docs say no) | Yes | Yes |
+| Dragon HD Omni | Yes (docs say no) | Yes | Yes (docs say no) | Not measured | Yes |
+| MAI-Voice | **Ignored**: the tool sends none and warns about `[pause]` | Yes | Yes | Yes | Refused |
+| Standard | Yes | Yes | Yes | Yes | Refused |
+
+Volume and the rate multiplier were measured on 2026-11-23 with WAV output of the same sentence:
+`volume="20"` made the audio 19 to 23% as loud (RMS) and `rate="1.5"` made it 55 to 66% as long,
+in every family measured.
 
 Styles were accepted by all families; whether they change the delivery is for your ear.
 Listen to the result: the service may change, and these checks only measured length.

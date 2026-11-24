@@ -57,6 +57,13 @@ def test_mai_voices_are_the_only_family_without_breaks():
         (speech(temperature=1.5), "between 0.0 and 1.0"),
         (speech(voice="en-US-Harper:MAI-Voice-2.1", temperature=0.5), "HD voices only"),
         (speech(voice="en-US-AvaMultilingualNeural", temperature=0.5), "HD voices only"),
+        (Profile(name="p", engine="openai", voice="marin", volume="80"), "volume doesn't apply"),
+        (speech(rate="0.4"), "rate as a multiplier must be between 0.5 and 2"),
+        (speech(rate="2.5"), "rate as a multiplier must be between 0.5 and 2"),
+        (speech(rate="+1.2"), "rate '\\+1.2'"),
+        (speech(volume="loudest"), "volume 'loudest'"),
+        (speech(volume="120"), "volume as an absolute value must be between 0 and 100"),
+        (speech(volume="80dB"), "volume '80dB'"),
     ],
 )
 def test_unsupported_settings_are_refused(profile, message):
@@ -71,6 +78,15 @@ def test_unsupported_settings_are_refused(profile, message):
         speech(voice="en-US-Harper:MAI-Voice-2.1", style="narrator", rate="slow", pitch="low"),
         speech(voice="en-us-ava:DragonHDOmniLatestNeural", temperature=0.3, pitch="-10Hz"),
         Profile(name="o", engine="openai", voice="marin", instructions="Calm."),
+        speech(rate="1.2", volume="80"),  # a rate multiplier, an absolute volume
+        speech(rate="0.5", volume="0"),
+        speech(rate="2", volume="100"),
+        speech(volume="-10"),  # relative
+        speech(volume="+5.5"),
+        speech(volume="-25%"),
+        speech(volume="50%"),
+        speech(voice="en-US-Harper:MAI-Voice-2.1", volume="soft"),  # every family (measured)
+        speech(voice="en-US-AvaMultilingualNeural", volume="x-loud"),
     ],
 )
 def test_supported_settings_pass(profile):

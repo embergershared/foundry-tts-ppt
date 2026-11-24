@@ -66,6 +66,15 @@ def test_style_rate_pitch_and_temperature_override_the_profile(local, client, tr
     assert 'parameters="temperature=0.3"' in ssml
 
 
+def test_volume_and_a_rate_multiplier_override_the_profile(local, client, transport, contoso):
+    deck(
+        ["synth", str(contoso), "--profile", "andrew-hd", "--rate", "1.2", "--volume=-10"],
+        local,
+        client,
+    )  # noqa: E501
+    assert '<prosody rate="1.2" volume="-10">' in sent(transport)
+
+
 def test_an_override_the_voice_family_refuses_stops_before_azure(
     local, client, transport, contoso
 ):
@@ -97,6 +106,7 @@ def test_profile_list_gives_every_profile_and_what_its_voice_accepts():
     assert profiles["ava-hd-steady"]["settings"] == {"rate": "-5%", "temperature": 0.6}
     assert "temperature" in profiles["andrew-hd"]["applies"]
     assert "temperature" not in profiles["harper-narrator"]["applies"]  # a MAI-Voice voice
+    assert "volume" in profiles["harper-narrator"]["applies"]  # every speech family (measured)
     assert profiles["marin-presenter"]["applies"] == ["instructions"]
     assert profiles["marin-presenter"]["family"] is None
 
@@ -121,17 +131,18 @@ def test_profile_check_reports_why_not(caplog):
 def test_profile_save_adds_a_profile_above_the_lexicon(config_copy):
     code, result = profile_command(
         ["save", "andrew-slow", "--profile", "andrew-hd", "--rate=-10%", "--temperature=0.5",
-         "--config", str(config_copy)]
+         "--volume", "80", "--config", str(config_copy)]
     )  # fmt: skip
     assert code == 0
     assert result["name"] == "andrew-slow"
 
     saved = load_settings(config_copy, env=ENV)
     profile = saved.profile("andrew-slow")
-    assert (profile.voice, profile.rate, profile.temperature) == (
+    assert (profile.voice, profile.rate, profile.temperature, profile.volume) == (
         "en-US-Andrew:DragonHDLatestNeural",
         "-10%",
         0.5,
+        "80",
     )
     assert saved.lexicon["AKS"] == "A K S"  # the lexicon is still a table of its own
     text = config_copy.read_text(encoding="utf-8")

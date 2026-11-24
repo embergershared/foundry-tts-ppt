@@ -50,11 +50,10 @@ def build_ssml(
     separator = f" {_break(paragraph_break_ms)} " if breaks else " "
     body = separator.join(rendered)
 
-    if profile.rate is not None or profile.pitch is not None:
+    prosody = (("rate", profile.rate), ("pitch", profile.pitch), ("volume", profile.volume))
+    if any(value is not None for _, value in prosody):
         attributes = "".join(
-            f" {name}={quoteattr(value)}"
-            for name, value in (("rate", profile.rate), ("pitch", profile.pitch))
-            if value is not None
+            f" {name}={quoteattr(value)}" for name, value in prosody if value is not None
         )
         body = f"<prosody{attributes}>{body}</prosody>"
     if profile.style is not None:

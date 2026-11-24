@@ -251,7 +251,9 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
   rule: it asks `profile list` what each voice accepts and `profile check` whether a choice is
   valid, and passes settings as `--<name>=<value>` (a value like `-5%` would read as an option).
   Its **Pick…** button reads `voice list --json` once and opens a voice picker (`Show-VoicePicker`;
-  sizes scaled by `DeviceDpi / 96`).
+  sizes scaled by `DeviceDpi / 96`). Rate, pitch and volume have sliders (`$script:Sliders`): the
+  box is the value, the slider only writes into it and follows it (`ConvertTo-SliderText` /
+  `ConvertFrom-SliderText`).
   Its logic is tested by `tests/scripts/Test-DemoTuning.ps1` (local, not in CI); its last choices
   stay in `%LOCALAPPDATA%\foundry-tts-ppt\tuning.json`. It plays the sample with MCI
   (`winmm.dll`), never a WPF `MediaPlayer`: creating one makes a DPI-unaware process DPI-aware,
