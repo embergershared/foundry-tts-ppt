@@ -14,7 +14,7 @@ from pathlib import Path
 
 import httpx
 
-from foundry_tts import audio_file, deck, engines, markup, notes, speak
+from foundry_tts import audio_file, deck, engines, markup, notes, output_names, speak
 from foundry_tts.config import Settings
 from foundry_tts.errors import TtsError
 from foundry_tts.markup import Lexicon
@@ -166,7 +166,7 @@ def synth_deck(
     it again.
     """
     slides, used_reader = deck.read_slides(deck_path, reader)
-    folder = out or settings.output_folder / deck_path.stem
+    folder = out or output_names.default_folder(deck_path, settings)
     jobs, skipped = _jobs(
         slides,
         profile=profile,

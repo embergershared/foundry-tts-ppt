@@ -215,7 +215,9 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
   copy (`deck_narrate.py`, `powerpoint.narrate`: PowerPoint embeds the audio, which must be set to
   start after the slide appears, not on click; `--auto-advance` sets slide timings, `--video`
   exports an MP4). Reruns reuse a slide's audio when its manifest hash (audio format + request
-  bodies) is unchanged. `cli.py` (options, flow), `config.py` (the only reader of
+  bodies) is unchanged. `output_names.py` names what the deck commands write: PowerPoint saves
+  and opens only paths up to 259 characters (`[deck] max_path_chars`), even with Windows long
+  paths on, and cuts a longer name without an error, so long deck names are shortened. `cli.py` (options, flow), `config.py` (the only reader of
   `foundry-tts.toml` and the `FOUNDRY_*` variables / `.env`), `engines.py` (REST calls with
   `httpx`), `profiles.py` (voice profiles, voice families and what each honors),
   `markup.py` (`//` comments, `[pause 1s]`, the pronunciation lexicon), `ssml.py`,

@@ -195,6 +195,15 @@ copy and video it wrote before (they are listed in the manifest), without `--ove
 copy, the audio the tool put in (shapes named `[deck] audio_shape_name`, or carrying its tag) is
 replaced and other media are left alone; a slide that has no notes any more loses its narration.
 
+A deck with a **long file name** gets shorter output names. PowerPoint saves and opens a file
+only if its full path is at most 259 characters (`[deck] max_path_chars`), even with Windows long
+paths turned on, and the deck's name is in the default path twice. So the narrated copy's and the
+video's names are cut, at a word where it can, until they fit, and the run logs "The deck's name
+is long: shortened…" with the new path. The folder `output\<deck name>\` keeps the full name
+unless it leaves no room for a copy of `[deck] min_name_chars` (20); the same deck always gets
+the same names, so reruns still reuse its audio. A `--deck-out`, `--video-out` or `--out` path
+that can't fit is refused before any Azure call.
+
 A deck with a **sensitivity label** stays encrypted: PowerPoint saves the copy with the same
 protection (checked on a real labeled deck). If a copy of an encrypted deck comes out
 unencrypted, the tool logs a warning; check its label before sharing it.

@@ -1,5 +1,6 @@
 import json
 import logging
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +12,7 @@ from fake_powerpoint import FakePresentation
 
 from foundry_tts import cli, deck, deck_narrate, powerpoint
 from foundry_tts.errors import TtsError
+from foundry_tts.output_names import NARRATED_SUFFIX, path_chars
 from foundry_tts.powerpoint import MSO_FALSE, MSO_TRUE, Narration
 
 NOW = datetime(2026, 11, 12, 9, 0, 0)
@@ -251,6 +253,97 @@ def test_an_encrypted_source_with_an_unencrypted_copy_is_flagged(
     with caplog.at_level(logging.WARNING):
         run(["narrate", str(contoso), "--skip-synth"], local, client)
     assert "check its label in PowerPoint" in caplog.text
+
+
+LONG = "Northwind review - final with transitions"
+LONG_CUT = "Northwind review - final with"
+
+
+def test_a_long_deck_name_gets_a_narrated_copy_powerpoint_can_save(
+    local, client, fake_narrate, tmp_path
+):
+    """Issue #25: output/<deck>/<deck>.narrated.pptx was one character over PowerPoint's limit."""
+    long_deck = make_deck(tmp_path / f"{LONG}.pptx")
+    folder = tmp_path / "output" / LONG
+    limit = path_chars(folder) + 1 + len(LONG) + len(NARRATED_SUFFIX) - 1
+    limited = replace(local, deck=replace(local.deck, max_path_chars=limit))
+
+    out = run(["narrate", str(long_deck), "--video"], limited, client)
+
+    # The folder keeps the deck's name (a rerun finds its audio); the copy's name is cut.
+    assert out == folder / f"{LONG_CUT}{NARRATED_SUFFIX}"
+    assert path_chars(out) <= limit
+    (call,) = fake_narrate
+    assert call["out"] == out
+    assert call["video"].path == folder / f"{LONG}.narrated.mp4"  # one character shorter: fits
+
+
+@pytest.mark.parametrize(
+    ("option", "message"),
+    [
+        ("--out", "too long for PowerPoint"),
+        ("--deck-out", "choose a shorter --deck-out"),
+        ("--video-out", "choose a shorter --video-out"),
+    ],
+)
+def test_output_paths_powerpoint_cant_use_are_refused_before_azure(
+    local, client, transport, contoso, fake_narrate, tmp_path, option, message
+):
+    limited = replace(local, deck=replace(local.deck, max_path_chars=path_chars(tmp_path) + 60))
+    too_long = str(tmp_path / ("x" * 57))
+    argv = ["narrate", str(contoso), "--out", str(tmp_path / "o")]
+    argv += {
+        "--out": ["--out", too_long],
+        "--deck-out": ["--deck-out", f"{too_long}.pptx"],
+        "--video-out": ["--video-out", f"{too_long}.mp4"],
+    }[option]
+    with pytest.raises(TtsError, match=message):
+        run(argv, limited, client)
+    assert transport.requests == []
+    assert fake_narrate == []
+
+
+@pytest.fixture
+def fake_app(monkeypatch):
+    """powerpoint.narrate on a fake presentation, without COM."""
+    presentation = FakePresentation(1, video_statuses=(3,))
+
+    @contextmanager
+    def app(path):
+        yield object(), RuntimeError
+
+    @contextmanager
+    def open_read_only(app, path, com_error):
+        yield presentation
+
+    monkeypatch.setattr(powerpoint, "_powerpoint", app)
+    monkeypatch.setattr(powerpoint, "_open_read_only", open_read_only)
+    return presentation
+
+
+def test_powerpoint_narrate_saves_the_copy_where_it_was_told(tmp_path, fake_app):
+    out = tmp_path / "copy.pptx"
+    powerpoint.narrate(tmp_path / "d.pptx", [], out, shape_name=SHAPE, margin_points=20)
+    assert fake_app.saved_as == [(str(out.resolve()), powerpoint.PP_SAVE_AS_PPTX)]
+    assert out.is_file()
+
+
+def test_a_copy_powerpoint_saved_under_a_cut_name_is_reported(tmp_path, fake_app):
+    """Issue #25: SaveAs returned without an error, but the copy was saved as .narrated.ppt."""
+    out = tmp_path / "deck.narrated.pptx"
+    fake_app.max_path_chars = path_chars(out) - 1
+    with pytest.raises(TtsError, match=r"reported the narrated copy saved, but .* isn't there"):
+        powerpoint.narrate(tmp_path / "d.pptx", [], out, shape_name=SHAPE, margin_points=20)
+    assert (tmp_path / "deck.narrated.ppt").is_file()
+
+
+def test_a_video_powerpoint_didnt_write_is_reported(tmp_path, fake_app):
+    with pytest.raises(TtsError, match=r"reported the video saved, but .*deck\.mp4 isn't there"):
+        powerpoint.narrate(
+            tmp_path / "d.pptx", [], tmp_path / "copy.pptx", shape_name=SHAPE, margin_points=20,
+            advance=powerpoint.Advance(gap_seconds=1, silent_slide_seconds=5),
+            video=video(tmp_path),
+        )  # fmt: skip
 
 
 def test_main_narrate_reports_errors(tmp_path, monkeypatch, caplog):

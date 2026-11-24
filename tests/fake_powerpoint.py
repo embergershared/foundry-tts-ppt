@@ -1,12 +1,13 @@
 """A small stand-in for PowerPoint's object model, for the COM code paths that tests can't run.
 
-Only what powerpoint.place_narrations uses: Slides, Shapes (1-based Item, Count, AddMediaObject2,
-Delete), Tags, AnimationSettings.PlaySettings, TimeLine.MainSequence, MediaFormat.Length,
-SlideShowTransition and PageSetup.SlideWidth. As in PowerPoint, setting PlayOnEntry adds a media
-play effect at the end of the main sequence, started by a click.
+Only what powerpoint.place_narrations and narrate use: SaveAs, Slides, Shapes (1-based Item,
+Count, AddMediaObject2, Delete), Tags, AnimationSettings.PlaySettings, TimeLine.MainSequence,
+MediaFormat.Length, SlideShowTransition and PageSetup.SlideWidth. As in PowerPoint, setting
+PlayOnEntry adds a media play effect at the end of the main sequence, started by a click.
 """
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 MEDIA_PLAY = 83
 ON_PAGE_CLICK = 1
@@ -180,15 +181,24 @@ class FakePresentation:
     """slide_count slides; lengths_ms maps an audio path (as given to AddMediaObject2) to ms.
 
     video_statuses: the CreateVideoStatus values returned one after the other (the last repeats).
+    SaveAs writes a stand-in file; with max_path_chars set it cuts a longer path to that length
+    without an error, as PowerPoint does (issue #25).
     """
 
-    def __init__(self, slide_count, lengths_ms=None, video_statuses=(3,)):
+    def __init__(self, slide_count, lengths_ms=None, video_statuses=(3,), max_path_chars=None):
         self.lengths_ms = lengths_ms or {}
         self.Slides = FakeCollection([FakeSlide(self.lengths_ms) for _ in range(slide_count)])
         self.PageSetup = FakePageSetup()
         self.SlideShowSettings = FakeSlideShowSettings()
         self.video_calls = []
         self._video_statuses = list(video_statuses)
+        self.saved_as = []
+        self.max_path_chars = max_path_chars
+
+    def SaveAs(self, path, file_format):  # noqa: N802
+        self.saved_as.append((path, file_format))
+        written = path if self.max_path_chars is None else path[: self.max_path_chars]
+        Path(written).write_bytes(b"PK\x03\x04narrated")
 
     def CreateVideo(self, *args):  # noqa: N802
         self.video_calls.append(args)

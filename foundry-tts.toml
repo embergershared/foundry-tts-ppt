@@ -41,6 +41,14 @@ off_slide_margin_points = 20
 # ends; a slide without narration shows this long.
 advance_gap_seconds = 1
 silent_slide_seconds = 5
+# The longest full path PowerPoint saves or opens, in characters: Windows' MAX_PATH (260) less
+# its ending null. PowerPoint keeps to it even with Windows long paths turned on, and cuts a
+# longer name without an error. A deck with a long name gets its output folder and file names
+# shortened to fit; an explicit --deck-out or --video-out that doesn't fit is refused.
+max_path_chars = 259
+# The shortest a shortened deck name may get, in characters; an --out folder too long to leave
+# room for it is refused.
+min_name_chars = 20
 
 [video]
 # deck narrate --video: PowerPoint's MP4 export (Presentation.CreateVideo). Height in pixels

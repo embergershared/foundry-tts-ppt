@@ -294,6 +294,16 @@ def export_video(
         sleep(video.poll_seconds)
 
 
+def _check_written(path: Path, what: str) -> None:
+    """PowerPoint can report success and still write elsewhere, e.g. under a cut name."""
+    if not path.is_file():
+        raise TtsError(
+            f"PowerPoint reported the {what} saved, but {path} isn't there "
+            f"({len(str(path.resolve()))} characters; look in its folder for a file with a "
+            "cut name)."
+        )
+
+
 @dataclass(frozen=True)
 class Narrated:
     placed: list[Placed]
@@ -324,8 +334,10 @@ def narrate(
             )
             timings = set_timings(deck, placed, advance) if advance is not None else {}
             deck.SaveAs(str(out_path.resolve()), PP_SAVE_AS_PPTX)
+            _check_written(out_path, "narrated copy")
             if video is not None:
                 export_video(deck, video)
+                _check_written(video.path, "video")
         except com_error as error:
             raise TtsError(
                 f"PowerPoint could not narrate {path}: {_com_message(error)}"
