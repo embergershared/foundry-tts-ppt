@@ -67,9 +67,9 @@ def test_one_audio_file_per_slide_with_notes_and_a_manifest(
         "created": "2026-11-11T15:00:00",
     }
     assert (manifest["profile"], manifest["engine"], manifest["voice"]) == (
-        "ava-hd",
+        "andrew-hd",
         "speech",
-        "en-US-Ava:DragonHDLatestNeural",
+        "en-US-Andrew:DragonHDLatestNeural",
     )
     assert manifest["slide_count"] == 5
     assert [(s["slide"], s["file"], s["requests"]) for s in manifest["slides"]] == [

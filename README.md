@@ -41,6 +41,7 @@ deck (needs desktop PowerPoint on Windows). Details: [docs/getting-started.md](d
 | Page | What it covers |
 |---|---|
 | [docs/getting-started.md](docs/getting-started.md) | **Start here:** build, run and test the project locally |
+| [docs/demo.md](docs/demo.md) | Demo to a customer: pick a deck, it plays back narrated and self-running |
 | [docs/tts-tuning.md](docs/tts-tuning.md) | Make the voice sound better: voices, pauses, style, tone |
 | [docs/plan.md](docs/plan.md) | The plan: phases, choices, voice tuning ideas |
 | [docs/powershell-prototype.md](docs/powershell-prototype.md) | A tested PowerShell prototype that narrates a deck through PowerPoint (Windows) |

@@ -7,6 +7,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- Profile `andrew-hd`: a male Dragon HD voice (Andrew) (#21).
+- `scripts/Start-Demo.ps1`: pick a deck in a file picker and get it back ready to play, narrated and self-running, straight in Slide Show; `docs/demo.md` is the runbook for a customer demo (#21).
 - `foundry-tts deck narrate --auto-advance`: the deck runs on its own, each slide moving on when its narration ends; `--video` also exports it to MP4 (#13).
 - `foundry-tts deck narrate deck.pptx`: a copy of the deck with each slide's audio embedded, starting on its own in Slide Show; made through desktop PowerPoint, which keeps a sensitivity label's protection (#12).
 - `foundry-tts deck synth deck.pptx`: one audio file per slide from its speaker notes, with presenter cues cleaned out, and a `manifest.json`; sensitivity-labeled decks are read through desktop PowerPoint (#11).
@@ -16,11 +18,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Repository created from [embergershared/repo-template](https://github.com/embergershared/repo-template).
 
 ### Changed
+- `foundry-tts`: the default profile is `andrew-hd` (a male voice) instead of `ava-hd`, for text, decks and the demo launcher; `--profile ava-hd` (or the demo's `-VoiceProfile ava-hd`) brings Ava back (#21).
+- `foundry-tts deck synth` and `deck narrate`: they write the full path of what they made on stdout, for scripts; logs stay on stderr (#21).
 - `foundry-tts deck synth` and `deck narrate`: a rerun only synthesizes the slides that changed and replaces the files it wrote before; `--overwrite` makes everything again (#13).
 - `foundry-tts`: text longer than one request is split and the MP3 parts are joined, instead of being refused (#11).
 - `foundry-tts`: profiles replace `--engine`; output files are named after the profile (#10).
 - README: it opens with an Overview (what the project does) and a Quick start; the personal-project note is at the bottom (#5).
 - Plan: it covers sensitivity-labeled decks, which `python-pptx` can't open, and the cleanups real speaker notes need before they are spoken (#15).
+- Getting started: a "What it costs" section with what one run of a real 15-slide deck costs per profile, measured from the requests the tool builds (#23).
 
 ### Fixed
 - `foundry-tts deck narrate`: a deck with a long file name no longer fails at the end with "Deck not found". PowerPoint can't save a path over 259 characters and had cut the copy's name to `.narrated.ppt`; long output names are now shortened to fit (`[deck] max_path_chars`, `min_name_chars`), paths that can't fit are refused before any Azure call, and the tool checks the copy and the video are where PowerPoint was told to save them (#25).

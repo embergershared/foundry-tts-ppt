@@ -42,12 +42,12 @@ def sent(transport, index=0) -> str:
 def test_text_with_the_default_profile(local, client, transport, tmp_path):
     (out,) = run(["--text", "Hello & welcome to AKS"], local, client)
 
-    assert out == tmp_path / "output" / f"{STAMP}-ava-hd.mp3"
+    assert out == tmp_path / "output" / f"{STAMP}-andrew-hd.mp3"
     assert out.read_bytes() == FAKE_AUDIO
     ssml = sent(transport)
+    assert 'name="en-US-Andrew:DragonHDLatestNeural"' in ssml
     assert "Hello &amp; welcome to" in ssml
     assert '<sub alias="A K S">AKS</sub>' in ssml  # lexicon of the settings file
-    assert 'name="en-US-Ava:DragonHDLatestNeural"' in ssml
 
 
 def test_profile_sets_voice_style_and_tuning(local, client, transport):
@@ -196,7 +196,11 @@ def test_list_profiles_marks_the_default():
     stdout = io.StringIO()
     cli.list_profiles(load_settings(CONFIG, env={}), stdout)
     lines = stdout.getvalue().splitlines()
-    assert lines[0] == "* ava-hd  speech  en-US-Ava:DragonHDLatestNeural"
+    # Only the default is marked, wherever it sorts.
+    assert [line for line in lines if line.startswith("*")] == [
+        "* andrew-hd  speech  en-US-Andrew:DragonHDLatestNeural"
+    ]
+    assert "  ava-hd  speech  en-US-Ava:DragonHDLatestNeural" in lines
     assert any(
         line.startswith("  marin-presenter  openai  marin  instructions=") for line in lines
     )

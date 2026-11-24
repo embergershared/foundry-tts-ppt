@@ -34,7 +34,8 @@ A profile is a named set of voice settings in `foundry-tts.toml`. `--list-profil
 
 | Profile (shipped) | Engine | Voice and settings |
 |---|---|---|
-| `ava-hd` (default) | speech | Ava, Dragon HD |
+| `andrew-hd` (default) | speech | Andrew, Dragon HD: a male voice, same price and markup support as Ava |
+| `ava-hd` | speech | Ava, Dragon HD: a female voice |
 | `ava-hd-steady` | speech | Ava, Dragon HD, `temperature = 0.6`, `rate = "-5%"` |
 | `harper-narrator` | speech | Harper, MAI-Voice-2.1, `style = "narrator"` |
 | `marin-presenter` | openai | `marin`, presenter `instructions` |

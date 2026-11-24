@@ -4,7 +4,7 @@
 
 [defaults]
 # Profile used when --profile isn't given.
-profile = "ava-hd"
+profile = "andrew-hd"
 
 [speech]
 # Language of the SSML when a profile doesn't set one.
@@ -79,6 +79,11 @@ folder = "output"
 [profiles.ava-hd]
 engine = "speech"
 voice = "en-US-Ava:DragonHDLatestNeural"
+
+# The default: a male voice of the same Dragon HD family as Ava (same price and markup support).
+[profiles.andrew-hd]
+engine = "speech"
+voice = "en-US-Andrew:DragonHDLatestNeural"
 
 [profiles.ava-hd-steady]
 engine = "speech"
