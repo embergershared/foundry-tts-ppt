@@ -4,9 +4,29 @@ What the customer sees: you pick their deck, and a few seconds later it plays ba
 self-running presentation. Each slide is narrated from its speaker notes by a Microsoft Foundry
 voice and moves on by itself when its narration ends.
 
-One script does it all: `scripts/Start-Demo.ps1`. It opens a file picker, runs
-`foundry-tts deck narrate <deck> --auto-advance`, and starts the narrated copy in Slide Show.
-The customer's deck is never changed.
+One script does it all: `scripts/Start-Demo.ps1`. It opens a tuning window where you pick the
+deck and the voice, runs `foundry-tts deck narrate <deck> --auto-advance`, and starts the narrated
+copy in Slide Show. The customer's deck is never changed.
+
+## The tuning window
+
+It opens first, filled in with the last run's choices (kept on this PC in
+`%LOCALAPPDATA%\foundry-tts-ppt\tuning.json`, never in the repository).
+
+| Part | What it does |
+|---|---|
+| **Deck** | The .pptx to narrate (**Browse…** opens a file picker) |
+| **Voice profile** | A profile from `foundry-tts.toml`; the line under it shows its engine, voice and voice family |
+| **Voice** … **Instructions** | Change one setting for this run. An empty box keeps the profile's value, shown greyed in it. Boxes the profile's voice doesn't accept are off: temperature for voices that aren't Dragon HD, the speech settings for an openai profile, and instructions for a speech one |
+| **Run** | Auto-advance (on), export an MP4 video (also turns auto-advance on), start the Slide Show |
+| **Listen to a sample** | Speaks the first slide the deck would narrate, with the settings as they are, and plays it. One Azure call: a fraction of a cent |
+| **Save as profile…** | Adds the profile with these settings to `foundry-tts.toml` under a new name, and selects it. Commit it if the team should have it; an existing name is refused |
+| **Narrate** | Checks the settings with the tool's profile rules (a problem shows in red and the window stays open), then closes and narrates |
+
+Values that start with `-` (a slower rate, `-5%`) are fine: the window passes them as
+`--rate=-5%`. Changing a setting makes every slide's audio again on the next run, as a new voice
+does. To skip the window, add `-SkipTuning` to the shortcut's `Arguments`: a file picker asks for
+the deck, as before.
 
 ## What you need
 
@@ -35,13 +55,15 @@ The customer's deck is never changed.
    ```
 
    `-NoExit` keeps the window open after the run, so you can read an error or the copy's path.
-   The demo speaks with the default profile, `andrew-hd` (a male voice). For another voice, add
-   `-VoiceProfile <name>` at the end of `Arguments`, e.g. `-VoiceProfile ava-hd` for a female
-   voice (the profiles: `.venv\Scripts\foundry-tts --list-profiles`). A new voice makes every
-   slide's audio again once (a full run's cost); the reruns after it reuse it.
+   The demo speaks with the default profile, `andrew-hd` (a male voice), until you pick another
+   in the tuning window. `-VoiceProfile <name>` at the end of `Arguments` picks one when the
+   window opens (the profiles: `.venv\Scripts\foundry-tts --list-profiles`). A new voice or
+   setting makes every slide's audio again once (a full run's cost); the reruns after it reuse it.
 
-2. **Do a full run with the demo deck:** double-click **Narrate a deck**, pick the deck, and
-   listen to the whole show.
+2. **Tune the voice on the demo deck:** double-click **Narrate a deck**, pick the deck, and use
+   **Listen to a sample** until the voice sounds right. **Save as profile…** keeps those settings.
+
+3. **Do a full run with the demo deck:** click **Narrate** and listen to the whole show.
    - The first run calls Azure once per narrated slide; the reruns reuse that audio. Measured on
      the 5-slide test deck (2 narrated slides, 22.5 s of narration): **21 s** for the first run,
      **5 s** for a rerun. A real 15-slide deck reran in 11 s.
@@ -51,15 +73,15 @@ The customer's deck is never changed.
    - A word said wrong (an acronym, a product name): add it to the pronunciation list, see
      [tts-tuning.md](tts-tuning.md), and run it again.
 
-3. **Check the sound** goes where the audience will hear it (the room's speakers, the meeting's
+4. **Check the sound** goes where the audience will hear it (the room's speakers, the meeting's
    shared audio).
 
 ## During the demo
 
 | Step | You do | The customer sees |
 |---|---|---|
-| 1 | Double-click **Narrate a deck** | A PowerShell window, then a file picker |
-| 2 | Pick the deck | "Azure sign-in OK", then one log line per step (notes cleaned, audio made or reused, narration embedded) |
+| 1 | Double-click **Narrate a deck** | A PowerShell window, "Azure sign-in OK", then the tuning window with the rehearsed deck and voice |
+| 2 | Click **Narrate** (or pick their deck first, and **Listen to a sample**) | One log line per step (notes cleaned, audio made or reused, narration embedded) |
 | 3 | Wait | `Ready to play: …\output\<deck>\<deck>.narrated.pptx`, and the Slide Show starts |
 | 4 | Nothing | Each slide's narration plays on its own; the deck moves on when it ends (a click still advances) |
 | 5 | Click or press Esc on the black "End of slide show" screen | Back to the desktop |
@@ -97,10 +119,13 @@ deck's label: anyone who has the file can watch it.
 | `foundry-tts is not installed in …\.venv` | [getting-started.md](getting-started.md), section 2 |
 | An error that mentions 401 or 403 | Wrong account or tenant (`az account show`), or the role is missing on the resource |
 | "Unknown profile …" | The shortcut's `-VoiceProfile` doesn't match a profile: check `--list-profiles` |
+| A red line in the tuning window | The tool's reason, e.g. "temperature applies to HD voices only": empty or fix that box |
+| "The voice profiles can't be read" | `foundry-tts.toml` has a mistake (often after editing it by hand): the message says where |
+| The sample doesn't play | Windows' default audio app opens it instead; its path is in the window's status line |
 | A slide is silent | It has no notes, only `//` comments, or it is hidden: the log line "Deck read." lists the skipped slides and why |
 | The show plays but nothing is heard | The sound output: Windows volume, the room's speakers, or "share sound" in the meeting |
 | PowerPoint can't open a labeled deck | Your account must be allowed to open it: open it once in PowerPoint first |
-| The file picker doesn't open | Run it with the deck's path: `.\scripts\Start-Demo.ps1 -Deck "<path to the deck>.pptx"` |
+| The tuning window or file picker doesn't open | Run it without the window: `.\scripts\Start-Demo.ps1 -Deck "<path to the deck>.pptx" -SkipTuning` |
 | Anything else, with no time to fix it | Open the copy from the rehearsal yourself (`output\<deck>\<deck>.narrated.pptx`) and press F5 |
 
 ## Afterwards
