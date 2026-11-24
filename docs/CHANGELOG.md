@@ -24,6 +24,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Repository created from [embergershared/repo-template](https://github.com/embergershared/repo-template).
 
 ### Changed
+- Demo launcher and tuning window: the tool's logs show in the console as they come, one readable line each (errors red, warnings yellow), and go to a log file a day in `%LOCALAPPDATA%\foundry-tts-ppt\logs\`, with the launcher's own steps. A failure says where the details are, a button's failure stays in the window's status line, and the launcher ends with "The demo stopped: …" instead of a PowerShell error. `foundry-tts` logs an unexpected error as one JSON ERROR line with its traceback and exits 3, instead of a bare traceback. The narrated copy's path is read in UTF-8, so a deck named with a dash or an accent is found (#40).
 - `foundry-tts`: the default profile is `andrew-hd` (a male voice) instead of `ava-hd`, for text, decks and the demo launcher; `--profile ava-hd` (or the demo's `-VoiceProfile ava-hd`) brings Ava back (#21).
 - `foundry-tts deck synth` and `deck narrate`: they write the full path of what they made on stdout, for scripts; logs stay on stderr (#21).
 - `foundry-tts deck synth` and `deck narrate`: a rerun only synthesizes the slides that changed and replaces the files it wrote before; `--overwrite` makes everything again (#13).

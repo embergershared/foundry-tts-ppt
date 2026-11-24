@@ -6,7 +6,7 @@ from datetime import datetime
 
 import httpx
 import pytest
-from conftest import CONFIG, FAKE_AUDIO, RecordingTransport, fake_token
+from conftest import CONFIG, ENV, FAKE_AUDIO, RecordingTransport, fake_token
 from test_audio_file import FakeStdin
 
 from foundry_tts import cli
@@ -218,6 +218,45 @@ def test_main_returns_1_and_logs_the_error(tmp_path, caplog, monkeypatch):
         code = cli.main(["--text", "Hi", "--config", str(tmp_path / "missing.toml")])
     assert code == 1
     assert "Settings file not found" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("argv", "runner"),
+    [
+        (["deck", "sample", "contoso.pptx"], "run_deck"),
+        (["profile", "list"], "run_profile"),
+        (["voice", "list"], "run_voice"),
+        (["--text", "Hi"], "run"),
+    ],
+)
+def test_main_logs_an_unexpected_error_as_one_json_line(
+    tmp_path, monkeypatch, capsys, argv, runner
+):
+    """Issue #40: an error that isn't a TtsError crashed with a bare traceback on stderr."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli.engines, "azure_token_provider", lambda: fake_token)
+    monkeypatch.setattr(
+        cli, "load_settings", lambda *args, **kwargs: load_settings(CONFIG, env=ENV)
+    )
+
+    def fail(*args, **kwargs):
+        raise FileNotFoundError(2, "The system cannot find the path specified", "out\\x \\a.mp3")
+
+    monkeypatch.setattr(cli, runner, fail)
+    code = cli.main([*argv, "--config", str(CONFIG)])
+
+    assert code == cli.EXIT_UNEXPECTED
+    captured = capsys.readouterr()
+    assert captured.out == ""  # stdout stays for the result
+    lines = [
+        json.loads(line) for line in captured.err.splitlines()
+    ]  # JSON only, no bare traceback
+    (entry,) = [line for line in lines if line["level"] == "ERROR"]
+    assert entry["message"].startswith("Unexpected error: FileNotFoundError: ")
+    assert "cannot find the path" in entry["message"]
+    assert entry["error_type"] == "FileNotFoundError"
+    assert entry["command"] == " ".join(argv[:2])
+    assert "Traceback" in entry["exception"]
 
 
 def test_main_reports_a_missing_variable_without_calling_azure(tmp_path, monkeypatch, caplog):

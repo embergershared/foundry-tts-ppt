@@ -139,37 +139,170 @@ function Get-ToolErrorMessage {
     $message
 }
 
+# ---- Logs ---------------------------------------------------------------------------------------
+# The tool writes one JSON object per line on stderr (src/foundry_tts/logs.py). The launcher and the
+# window show each line in the console as it comes, readable, and append it unchanged to the log
+# file, with the launcher's own steps in the same shape (logger "demo").
+$script:LogPath = $null
+$script:LogLogger = 'demo'
+$script:LevelColors = @{ CRITICAL = 'Red'; ERROR = 'Red'; WARNING = 'Yellow'; DEBUG = 'DarkGray' }
+# The fields every line has: shown as the line's head, not as key=value.
+$script:LogHeadFields = @('time', 'level', 'logger', 'message', 'exception')
+$script:LevelWidth = 7  # WARNING
+$script:Utf8 = [System.Text.UTF8Encoding]::new($false)
+
+function Set-DemoLog {
+    <# Sends the log lines to that file too (its folder is made); $null: the console only. #>
+    param([string] $Path)
+    if ($Path) {
+        $folder = Split-Path -Parent $Path
+        if (-not (Test-Path -LiteralPath $folder)) { New-Item -ItemType Directory -Path $folder -Force | Out-Null }
+    }
+    $script:LogPath = $Path
+}
+
+function Get-DemoLog {
+    <# The log file, or $null. #>
+    $script:LogPath
+}
+
+function Format-LogValue {
+    <# A field's value for the console: lists and objects as compact JSON, text with spaces quoted. #>
+    param($Value)
+    if ($null -eq $Value) { return 'null' }
+    if ($Value -is [string]) { return ($Value -match '\s') ? "`"$Value`"" : $Value }
+    if ($Value -is [System.Collections.IDictionary] -or ($Value -is [System.Collections.IEnumerable])) {
+        return ($Value | ConvertTo-Json -Compress -Depth 6 -WarningAction SilentlyContinue)
+    }
+    [string]::Format([cultureinfo]::InvariantCulture, '{0}', $Value)
+}
+
+function Format-ToolLogLine {
+    <# A log line as the console shows it: Level, and Text "HH:mm:ss LEVEL   message  key=value ...",
+       the traceback indented below. A line that isn't a JSON object is shown as it is (level ''). #>
+    param([AllowEmptyString()] [AllowNull()] [string] $Line)
+    $entry = $null
+    if ($Line -and $Line.TrimStart().StartsWith('{')) {
+        try { $entry = $Line | ConvertFrom-Json -AsHashtable -ErrorAction Stop } catch { $entry = $null }
+    }
+    if ($entry -isnot [System.Collections.IDictionary] -or -not $entry.Contains('message')) {
+        return [pscustomobject]@{ Level = ''; Text = [string] $Line }
+    }
+    $level = [string] ($entry['level'] ?? 'INFO')
+    # ConvertFrom-Json turns an ISO time into a DateTime; another shape stays a string.
+    $time = $entry['time']
+    $parsed = [datetimeoffset]::MinValue
+    $clock = if ($time -is [datetime]) { $time.ToLocalTime().ToString('HH:mm:ss') }
+    elseif ($time -and [datetimeoffset]::TryParse([string] $time, [cultureinfo]::InvariantCulture, 'None', [ref] $parsed)) {
+        $parsed.ToLocalTime().ToString('HH:mm:ss')
+    }
+    else { '--:--:--' }
+    $fields = foreach ($key in $entry.Keys) {
+        if ($script:LogHeadFields -notcontains $key) { "$key=$(Format-LogValue $entry[$key])" }
+    }
+    $text = "$clock $($level.PadRight($script:LevelWidth)) $($entry['message'])"
+    if ($fields) { $text += "  $($fields -join ' ')" }
+    if ($entry['exception']) {
+        $text += "`n" + ((([string] $entry['exception']).TrimEnd() -split '\r?\n' | ForEach-Object { "    $_" }) -join "`n")
+    }
+    [pscustomobject]@{ Level = $level; Text = $text }
+}
+
+function Write-ToolLogLine {
+    <# Shows a log line in the console (errors red, warnings yellow) and appends it to the log file;
+       FileOnly: the file only (details the console already says in its own words). #>
+    param([AllowEmptyString()] [AllowNull()] [string] $Line, [switch] $FileOnly)
+    if (-not $Line) { return }
+    if (-not $FileOnly) {
+        $formatted = Format-ToolLogLine -Line $Line
+        $color = $script:LevelColors[$formatted.Level]
+        if ($color) { Write-Host $formatted.Text -ForegroundColor $color } else { Write-Host $formatted.Text }
+    }
+    if ($script:LogPath) {
+        try { [System.IO.File]::AppendAllText($script:LogPath, "$Line`n", $script:Utf8) }
+        catch {
+            # The console still has it; say once why the file doesn't.
+            Write-Warning "The log file $($script:LogPath) can't be written ($($_.Exception.Message)); logging to the console only."
+            $script:LogPath = $null
+        }
+    }
+}
+
+function Write-DemoLog {
+    <# One of the launcher's own log lines, in the tool's JSON shape (logger "demo"). #>
+    param(
+        [Parameter(Mandatory)] [ValidateSet('DEBUG', 'INFO', 'WARNING', 'ERROR')] [string] $Level,
+        [Parameter(Mandatory)] [string] $Message,
+        [System.Collections.IDictionary] $Data = @{},
+        [switch] $FileOnly
+    )
+    $entry = [ordered]@{
+        time    = [datetime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss.ffffff+00:00', [cultureinfo]::InvariantCulture)
+        level   = $Level
+        logger  = $script:LogLogger
+        message = $Message
+    }
+    foreach ($key in $Data.Keys) { $entry[$key] = $Data[$key] }
+    Write-ToolLogLine -Line ($entry | ConvertTo-Json -Compress -Depth 6 -WarningAction SilentlyContinue) -FileOnly:$FileOnly
+}
+
+function Get-LogHint {
+    <# Where the details are, for an error message. #>
+    if ($script:LogPath) { "Details: the console and $($script:LogPath)" } else { 'Details: the console.' }
+}
+
 function Invoke-FoundryTts {
-    <# Runs the tool from the repository's folder (so foundry-tts.toml and .env are found).
-       Returns ExitCode, Output (stdout lines) and Error (the error message, when it failed). #>
+    <# Runs the tool from the repository's folder (so foundry-tts.toml and .env are found). Its
+       logs (stderr) are shown and logged as they come; OnLine runs after each line (the window
+       repaints there). Returns ExitCode, Output (stdout lines) and Error (the error message, when
+       it failed). #>
     param(
         [Parameter(Mandatory)] [string] $Tool,
         [Parameter(Mandatory)] [string] $Root,
-        [Parameter(Mandatory)] [string[]] $Arguments
+        [Parameter(Mandatory)] [string[]] $Arguments,
+        [scriptblock] $OnLine
     )
-    $errorFile = New-TemporaryFile
+    Write-DemoLog INFO 'Running foundry-tts.' @{ arguments = ($Arguments -join ' ') }
+    $output = [System.Collections.Generic.List[string]]::new()
+    $errorLines = [System.Collections.Generic.List[string]]::new()
     # Python writes to a pipe in the Windows code page unless told UTF-8; a deck name or a setting
-    # with an accent would come back garbled.
+    # with an accent or a dash would come back garbled, and its path not found.
     $savedUtf8 = $env:PYTHONUTF8
     $savedEncoding = [Console]::OutputEncoding
     $env:PYTHONUTF8 = '1'
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    Push-Location $Root
+    $started = [System.Diagnostics.Stopwatch]::StartNew()
+    Push-Location -LiteralPath $Root
     try {
-        $output = @(& $Tool @Arguments 2> $errorFile.FullName)
+        # stderr lines come through as ErrorRecords, in order with stdout, while the tool runs.
+        & $Tool @Arguments 2>&1 | ForEach-Object {
+            if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                $line = $_.Exception.Message
+                $errorLines.Add($line)
+                Write-ToolLogLine -Line $line
+            }
+            else { $output.Add([string] $_) }
+            if ($OnLine) { & $OnLine }
+        }
         $exitCode = $LASTEXITCODE
-        $errorLines = @(Get-Content -LiteralPath $errorFile.FullName -Encoding utf8)
     }
     finally {
         Pop-Location
         $env:PYTHONUTF8 = $savedUtf8
         [Console]::OutputEncoding = $savedEncoding
-        Remove-Item -LiteralPath $errorFile.FullName -ErrorAction SilentlyContinue
     }
-    $message = if ($exitCode -ne 0) {
-        (Get-ToolErrorMessage -Lines $errorLines) ?? "foundry-tts failed (exit $exitCode)."
+    $done = [ordered]@{
+        command = (@($Arguments | Select-Object -First 2) -join ' ')
+        seconds = [math]::Round($started.Elapsed.TotalSeconds, 1)
     }
-    [pscustomobject]@{ ExitCode = $exitCode; Output = $output; Error = $message }
+    $message = $null
+    if ($exitCode -ne 0) {
+        $message = (Get-ToolErrorMessage -Lines $errorLines) ?? "foundry-tts failed (exit $exitCode)."
+        $done['exit_code'] = $exitCode
+        Write-DemoLog ERROR 'foundry-tts failed.' $done
+    }
+    else { Write-DemoLog INFO 'foundry-tts done.' $done }
+    [pscustomobject]@{ ExitCode = $exitCode; Output = $output.ToArray(); Error = $message }
 }
 
 function Read-TuningChoice {
@@ -718,12 +851,38 @@ function Show-TuningWindow {
         $true
     }
 
+    function Show-ToolError($Result) {
+        # The tool's own message, and where its logs are.
+        Show-Status "$($Result.Error)`n$(Get-LogHint)" $true
+    }
+
+    function Invoke-WindowAction([string] $Name, [scriptblock] $Action) {
+        # A button's work: whatever fails is logged and shown in the status line, and the window
+        # stays usable (an exception in a WinForms handler would otherwise be lost or end it).
+        Write-DemoLog INFO "Window: $Name."
+        try { & $Action }
+        catch {
+            Write-DemoLog ERROR "Window: $Name failed: $($_.Exception.Message)" ([ordered]@{
+                    action     = $Name
+                    error_type = $_.Exception.GetType().FullName
+                    at         = $_.InvocationInfo.PositionMessage
+                    stack      = $_.ScriptStackTrace
+                })
+            Show-Status "$Name failed: $($_.Exception.Message)`n$(Get-LogHint)" $true
+        }
+        finally {
+            $form.Enabled = $true
+            $form.UseWaitCursor = $false
+        }
+    }
+
     function Invoke-Busy([string] $Message, [string[]] $Arguments) {
         Show-Status $Message
         $form.UseWaitCursor = $true
         $form.Enabled = $false
         [System.Windows.Forms.Application]::DoEvents()
-        try { Invoke-FoundryTts -Tool $Tool -Root $Root -Arguments $Arguments }
+        # Repaint between log lines, so the window doesn't turn "Not responding" on a long call.
+        try { Invoke-FoundryTts -Tool $Tool -Root $Root -Arguments $Arguments -OnLine { [System.Windows.Forms.Application]::DoEvents() } }
         finally {
             $form.Enabled = $true
             $form.UseWaitCursor = $false
@@ -745,6 +904,9 @@ function Show-TuningWindow {
         }
         catch {
             # No in-window player: the default audio app plays it.
+            Write-DemoLog WARNING 'The sample can''t be played in the window; opening it in the default audio app.' ([ordered]@{
+                    path = $Path; error = $_.Exception.Message
+                })
             Start-Process -FilePath $Path
         }
     }
@@ -753,63 +915,75 @@ function Show-TuningWindow {
     $settingBoxes['voice'].Add_TextChanged({ Update-StyleHint })
 
     $pickVoice.Add_Click({
-            if ($null -eq $state.Voices) {
-                $result = Invoke-Busy 'Asking Azure Speech for its voices…' @('voice', 'list', '--json')
-                if ($result.ExitCode -ne 0) { Show-Status $result.Error $true; return }
-                $state.Voices = ConvertFrom-VoiceListing -Lines $result.Output
-                Show-Status "$($state.Voices.Count) voices listed."
-            }
-            $item = $state.Profiles[[string] $profileBox.SelectedItem]
-            $current = $settingBoxes['voice'].Text.Trim()
-            if (-not $current) { $current = $item.voice }
-            $picked = Show-VoicePicker -Voices $state.Voices -Current $current `
-                -Language $settingBoxes['language'].Text.Trim() -Owner $form
-            if ($picked) {
-                # The profile's own voice needs no override.
-                $settingBoxes['voice'].Text = if ($picked -eq $item.voice) { '' } else { $picked }
-                Update-StyleHint
+            Invoke-WindowAction 'Pick a voice' {
+                if ($null -eq $state.Voices) {
+                    $result = Invoke-Busy 'Asking Azure Speech for its voices…' @('voice', 'list', '--json')
+                    if ($result.ExitCode -ne 0) { Show-ToolError $result; return }
+                    $state.Voices = ConvertFrom-VoiceListing -Lines $result.Output
+                    Show-Status "$($state.Voices.Count) voices listed."
+                }
+                $item = $state.Profiles[[string] $profileBox.SelectedItem]
+                $current = $settingBoxes['voice'].Text.Trim()
+                if (-not $current) { $current = $item.voice }
+                $picked = Show-VoicePicker -Voices $state.Voices -Current $current `
+                    -Language $settingBoxes['language'].Text.Trim() -Owner $form
+                if ($picked) {
+                    # The profile's own voice needs no override.
+                    $settingBoxes['voice'].Text = if ($picked -eq $item.voice) { '' } else { $picked }
+                    Update-StyleHint
+                }
             }
         })
     Set-Profiles ($listing.Output -join "`n" | ConvertFrom-Json) $Choice.Profile
 
     $listen.Add_Click({
-            $current = Get-FormChoice
-            if (-not (Test-DeckPicked $current)) { return }
-            $arguments = @('deck', 'sample', $current.Deck) + (ConvertTo-VoiceArguments -Choice $current)
-            Stop-Sample
-            $result = Invoke-Busy 'Speaking the first narrated slide…' $arguments
-            if ($result.ExitCode -ne 0) { Show-Status $result.Error $true; return }
-            $path = @($result.Output)[-1]
-            Show-Status "Playing the sample: $path"
-            Start-Sample $path
+            Invoke-WindowAction 'Listen to a sample' {
+                $current = Get-FormChoice
+                if (-not (Test-DeckPicked $current)) { return }
+                $arguments = @('deck', 'sample', $current.Deck) + (ConvertTo-VoiceArguments -Choice $current)
+                Stop-Sample
+                $result = Invoke-Busy 'Speaking the first narrated slide…' $arguments
+                if ($result.ExitCode -ne 0) { Show-ToolError $result; return }
+                $path = @($result.Output)[-1]
+                if (-not $path -or -not (Test-Path -LiteralPath $path -PathType Leaf)) {
+                    throw "foundry-tts didn't give the sample's path (got: '$path')."
+                }
+                Show-Status "Playing the sample: $path"
+                Write-DemoLog INFO 'Playing the sample.' @{ path = $path }
+                Start-Sample $path
+            }
         })
 
     $save.Add_Click({
-            $current = Get-FormChoice
-            $name = [Microsoft.VisualBasic.Interaction]::InputBox(
-                "Save '$($current.Profile)' with these settings as a new profile in foundry-tts.toml.`n`nName (letters, digits, - and _):",
-                'Save as profile', '')
-            if (-not $name.Trim()) { return }
-            $arguments = @('profile', 'save', $name.Trim()) + (ConvertTo-VoiceArguments -Choice $current)
-            $result = Invoke-Busy 'Saving the profile…' $arguments
-            if ($result.ExitCode -ne 0) { Show-Status $result.Error $true; return }
-            $refreshed = Invoke-FoundryTts -Tool $Tool -Root $Root -Arguments @('profile', 'list')
-            if ($refreshed.ExitCode -ne 0) { Show-Status $refreshed.Error $true; return }
-            # The new profile holds the settings now: its boxes start empty.
-            foreach ($box in $settingBoxes.Values) { $box.Text = '' }
-            Set-Profiles ($refreshed.Output -join "`n" | ConvertFrom-Json) $name.Trim()
-            Show-Status "Profile '$($name.Trim())' saved in foundry-tts.toml."
+            Invoke-WindowAction 'Save as profile' {
+                $current = Get-FormChoice
+                $name = [Microsoft.VisualBasic.Interaction]::InputBox(
+                    "Save '$($current.Profile)' with these settings as a new profile in foundry-tts.toml.`n`nName (letters, digits, - and _):",
+                    'Save as profile', '')
+                if (-not $name.Trim()) { return }
+                $arguments = @('profile', 'save', $name.Trim()) + (ConvertTo-VoiceArguments -Choice $current)
+                $result = Invoke-Busy 'Saving the profile…' $arguments
+                if ($result.ExitCode -ne 0) { Show-ToolError $result; return }
+                $refreshed = Invoke-Busy 'Reading the profiles…' @('profile', 'list')
+                if ($refreshed.ExitCode -ne 0) { Show-ToolError $refreshed; return }
+                # The new profile holds the settings now: its boxes start empty.
+                foreach ($box in $settingBoxes.Values) { $box.Text = '' }
+                Set-Profiles ($refreshed.Output -join "`n" | ConvertFrom-Json) $name.Trim()
+                Show-Status "Profile '$($name.Trim())' saved in foundry-tts.toml."
+            }
         })
 
     $narrate.Add_Click({
-            $current = Get-FormChoice
-            if (-not (Test-DeckPicked $current)) { return }
-            $arguments = @('profile', 'check') + (ConvertTo-VoiceArguments -Choice $current)
-            $result = Invoke-Busy 'Checking the settings…' $arguments
-            if ($result.ExitCode -ne 0) { Show-Status $result.Error $true; return }
-            $state.Result = $current
-            $form.DialogResult = 'OK'
-            $form.Close()
+            Invoke-WindowAction 'Narrate' {
+                $current = Get-FormChoice
+                if (-not (Test-DeckPicked $current)) { return }
+                $arguments = @('profile', 'check') + (ConvertTo-VoiceArguments -Choice $current)
+                $result = Invoke-Busy 'Checking the settings…' $arguments
+                if ($result.ExitCode -ne 0) { Show-ToolError $result; return }
+                $state.Result = $current
+                $form.DialogResult = 'OK'
+                $form.Close()
+            }
         })
 
     try {
@@ -823,7 +997,8 @@ function Show-TuningWindow {
 }
 
 Export-ModuleMember -Function New-TuningChoice, ConvertTo-VoiceArguments, ConvertTo-NarrateArguments,
-Get-ToolErrorMessage, Invoke-FoundryTts, Read-TuningChoice, Save-TuningChoice, Format-SettingValue,
+Get-ToolErrorMessage, Invoke-FoundryTts, Set-DemoLog, Get-DemoLog, Get-LogHint, Format-ToolLogLine,
+Write-ToolLogLine, Write-DemoLog, Read-TuningChoice, Save-TuningChoice, Format-SettingValue,
 ConvertTo-SliderText, ConvertFrom-SliderText, ConvertFrom-VoiceListing, Select-TuningVoice,
 Get-VoiceFilterValues, Find-TuningVoice, Show-VoicePicker, Start-SamplePlayback, Stop-SamplePlayback,
 Get-SamplePlaybackMode, Show-TuningWindow
