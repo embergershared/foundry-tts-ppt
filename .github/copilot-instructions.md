@@ -217,7 +217,11 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
   exports an MP4). Reruns reuse a slide's audio when its manifest hash (audio format + request
   bodies) is unchanged. `output_names.py` names what the deck commands write: PowerPoint saves
   and opens only paths up to 259 characters (`[deck] max_path_chars`), even with Windows long
-  paths on, and cuts a longer name without an error, so long deck names are shortened.
+  paths on, and cuts a longer name without an error, so long deck names are shortened. Every
+  output name goes through `output_names.deck_name`: Windows drops trailing spaces and dots from
+  a folder's name and refuses device names (`CON`, `NUL`, ...), so a path built from the raw
+  `Path.stem` can point to a folder that doesn't exist (issue #39). Never use `deck_path.stem`
+  for an output name.
   `foundry-tts deck sample` speaks one slide (`deck_synth.sample_slide`); `foundry-tts profile
   list|check|save` print JSON for scripts (`profile save` appends `[profiles.<name>]` as text, so
   the file's comments stay); `foundry-tts voice list` (`voices.py`, `engines.list_speech_voices`)

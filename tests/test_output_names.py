@@ -55,6 +55,72 @@ def test_shortened_names(settings, tmp_path, name, room, expected):
     assert out.name == f"{expected}{NARRATED_SUFFIX}"
 
 
+@pytest.mark.parametrize(
+    ("file_name", "expected"),
+    [
+        ("Contoso review .pptx", "Contoso review"),  # issue #39: a space before .pptx
+        ("Contoso review. .pptx", "Contoso review"),  # dots and spaces
+        ("Contoso review..pptx", "Contoso review"),
+        ("Contoso - review_.pptx", "Contoso - review_"),  # only what Windows drops
+        (" Contoso review.pptx", " Contoso review"),  # a leading space is kept by Windows
+        (". .pptx", "deck"),  # nothing left: a usable name
+        ("CON.pptx", "CON_"),  # reserved device names
+        ("nul .pptx", "nul_"),
+        ("com1.pptx", "com1_"),
+        ("LPT9.pptx", "LPT9_"),
+        ("CONTOSO.pptx", "CONTOSO"),  # only the whole name is reserved
+        ("COM10.pptx", "COM10"),
+    ],
+)
+def test_deck_names_drop_what_windows_drops(file_name, expected):
+    assert output_names.deck_name(Path(file_name)) == expected
+
+
+# Names real decks have: each must give a folder and files that can be written and found again.
+HOSTILE_NAMES = [
+    "Contoso review .pptx",
+    "Contoso review..pptx",
+    "Contoso review . .pptx",
+    "Contoso – 2027 Overview — Final.pptx",  # en and em dashes
+    "Présentation équipe Fabrikam.pptx",
+    "Contoso [draft] (v2) {final}.pptx",
+    "Contoso's review & Q&A #1 100%.pptx",
+    "Contoso  two  spaces.pptx",
+    " Contoso leading space.pptx",
+    "Contoso 🚀 launch.pptx",
+    "Contoso;review,v1=final+edits~.pptx",
+    "con.pptx",
+]
+
+
+@pytest.mark.parametrize("file_name", HOSTILE_NAMES)
+def test_real_world_deck_names_give_writable_paths(settings, tmp_path, file_name):
+    deck = Path(file_name)
+    local = replace(settings, output_folder=tmp_path)
+    folder = output_names.default_folder(deck, local)
+    out = output_names.output_file(deck, folder, NARRATED_SUFFIX, settings.deck)
+    folder.mkdir()
+    (folder / "slide-01.mp3").write_bytes(b"x")
+    out.write_bytes(b"x")
+    # What Windows made is what the paths name: the same folder, found again by a rerun.
+    assert [p.name for p in tmp_path.iterdir()] == [folder.name]
+    assert sorted(p.name for p in folder.iterdir()) == sorted([out.name, "slide-01.mp3"])
+    assert output_names.default_folder(deck, local) == folder
+
+
+def test_a_deck_name_ending_with_a_space_gives_paths_windows_can_write(settings, tmp_path):
+    """Issue #39: output/<name >/ was created as output/<name>/, then every write in it failed."""
+    deck = Path("Contoso review .pptx")
+    local = replace(settings, output_folder=tmp_path)
+    folder = output_names.default_folder(deck, local)
+    out = output_names.output_file(deck, folder, NARRATED_SUFFIX, settings.deck)
+    assert folder == tmp_path / "Contoso review"
+    assert out == folder / f"Contoso review{NARRATED_SUFFIX}"
+    folder.mkdir()
+    out.write_bytes(b"x")  # the folder Windows made is the one the path names
+    assert out.read_bytes() == b"x"
+
+
 def test_a_folder_without_room_for_a_name_is_refused(settings, tmp_path):
     just_enough = path_chars(tmp_path) + 1 + 20 + len(NARRATED_SUFFIX)
     output_names.check_folder(tmp_path, limits(settings, just_enough))
