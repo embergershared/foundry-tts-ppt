@@ -4,9 +4,28 @@ What the customer sees: you pick their deck, and a few seconds later it plays ba
 self-running presentation. Each slide is narrated from its speaker notes by a Microsoft Foundry
 voice and moves on by itself when its narration ends.
 
-One script does it all: `scripts/Start-Demo.ps1`. It opens a tuning window where you pick the
-deck and the voice, runs `foundry-tts deck narrate <deck> --auto-advance`, and starts the narrated
-copy in Slide Show. The customer's deck is never changed.
+One script does it all: `scripts/Start-Demo.ps1`. It brings the clone to an up-to-date `main`,
+opens a tuning window where you pick the deck and the voice, runs
+`foundry-tts deck narrate <deck> --auto-advance`, and starts the narrated copy in Slide Show. The
+customer's deck is never changed.
+
+## Always the current main
+
+The demo always runs the code merged on GitHub, never a work branch or worktree left behind.
+Before anything else, the launcher:
+
+| It finds | It does |
+|---|---|
+| Another branch checked out | Switches to `main` (the branch stays) |
+| `main` behind GitHub | Fetches and fast-forwards it |
+| It was started from a linked worktree | Updates the main clone and runs its launcher instead |
+| The code changed | Runs the updated launcher |
+| No network | Warns, and runs the local `main` |
+| Uncommitted changes on another branch, or `main` with commits of its own | Stops and says what to do: nothing is lost |
+
+The first line of the run says what it did, e.g. `On main, up to date: 214e8de …` or
+`Switched from 'emberger/feature/31-…' to main, now at: …`. To rehearse a branch on purpose,
+start it with `-NoUpdate`.
 
 ## The tuning window
 
@@ -126,6 +145,9 @@ deck's label: anyone who has the file can watch it.
 | The show plays but nothing is heard | The sound output: Windows volume, the room's speakers, or "share sound" in the meeting |
 | PowerPoint can't open a labeled deck | Your account must be allowed to open it: open it once in PowerPoint first |
 | The tuning window or file picker doesn't open | Run it without the window: `.\scripts\Start-Demo.ps1 -Deck "<path to the deck>.pptx" -SkipTuning` |
+| "… is on '…' with uncommitted changes …" | The clone was left on a work branch with changes: commit or stash them (`git stash`), then start again. In a hurry: add `-NoUpdate` to run that branch as it is |
+| "main … has … commit(s) that aren't on GitHub" or "couldn't be fast-forwarded" | Changes reach `main` only through a PR: move them to a branch. A profile saved with **Save as profile…** is an uncommitted change to `foundry-tts.toml`: if GitHub's `main` changed that file too, commit the profile through a PR or stash it. In a hurry: `-NoUpdate` |
+| "Could not reach origin" | No network: the demo runs the local `main`, which may be behind GitHub |
 | Anything else, with no time to fix it | Open the copy from the rehearsal yourself (`output\<deck>\<deck>.narrated.pptx`) and press F5 |
 
 ## Afterwards
