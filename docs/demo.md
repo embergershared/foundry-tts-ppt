@@ -18,6 +18,7 @@ It opens first, filled in with the last run's choices (kept on this PC in
 | **Deck** | The .pptx to narrate (**Browse…** opens a file picker) |
 | **Voice profile** | A profile from `foundry-tts.toml`; the line under it shows its engine, voice and voice family |
 | **Voice** … **Instructions** | Change one setting for this run. An empty box keeps the profile's value, shown greyed in it. Boxes the profile's voice doesn't accept are off: temperature for voices that aren't Dragon HD, the speech settings for an openai profile, and instructions for a speech one |
+| **Rate**, **Pitch**, **Volume** sliders | Like the Foundry playground's Tuning panel. Dragging writes the value in the box: rate as a multiplier (0.5 to 2, `1` is normal), pitch in % (−50 to +50), volume 0 to 100 (100 is normal). Typing a value moves the slider (`slow`, `-5%` and `soft` too; `+2st` stays in the box only). Emptying the box puts the slider back at the profile's value |
 | **Run** | Auto-advance (on), export an MP4 video (also turns auto-advance on), start the Slide Show |
 | **Listen to a sample** | Speaks the first slide the deck would narrate, with the settings as they are, and plays it. One Azure call: a fraction of a cent |
 | **Save as profile…** | Adds the profile with these settings to `foundry-tts.toml` under a new name, and selects it. Commit it if the team should have it; an existing name is refused |

@@ -18,16 +18,70 @@
 Set-StrictMode -Version Latest
 
 # The profile settings the window can override, as the tool's --<name> options, in their order.
-$script:SettingNames = @('voice', 'language', 'style', 'rate', 'pitch', 'temperature', 'instructions')
+$script:SettingNames = @('voice', 'language', 'style', 'rate', 'pitch', 'volume', 'temperature', 'instructions')
 # Hints shown in an empty settings box when the profile doesn't set it.
 $script:SettingHints = @{
     voice        = 'the profile''s voice'
     language     = 'e.g. en-GB, fr-FR'
     style        = 'e.g. narrator, cheerful'
-    rate         = 'e.g. -5%, +10%, slow'
-    pitch        = 'e.g. +2st, -5%, low'
+    rate         = '1 = normal'
+    pitch        = '0% = normal'
+    volume       = '100 = normal'
     temperature  = '0 to 1, lower is steadier'
     instructions = 'tone and pace, in plain English'
+}
+
+# The settings with a slider, like the Foundry playground's Tuning panel. A slider position is an
+# integer: rate in hundredths of a multiplier (100 = 1, normal; SSML's documented 0.5 to 2), pitch
+# in % (0 = normal; SSML's 0.5 to 1.5 times), volume as SSML's absolute 0 to 100 (100 = normal).
+# Named levels map to the equivalents the SSML documentation gives.
+$script:Sliders = [ordered]@{
+    rate   = @{ Min = 50; Max = 200; Normal = 100; Step = 5; Named = @{ 'x-slow' = 50; slow = 64; medium = 100; fast = 155; 'x-fast' = 200; default = 100 } }
+    pitch  = @{ Min = -50; Max = 50; Normal = 0; Step = 5; Named = @{ 'x-low' = -45; low = -20; medium = 0; high = 20; 'x-high' = 45; default = 0 } }
+    volume = @{ Min = 0; Max = 100; Normal = 100; Step = 5; Named = @{ silent = 0; 'x-soft' = 20; soft = 40; medium = 60; loud = 80; 'x-loud' = 100; default = 100 } }
+}
+
+function ConvertTo-SliderText {
+    <# The setting's value for a slider position: rate 1.2, pitch +10%, volume 80. #>
+    param([Parameter(Mandatory)] [string] $Name, [Parameter(Mandatory)] [int] $Position)
+    $invariant = [cultureinfo]::InvariantCulture
+    switch ($Name) {
+        'rate' { ($Position / 100).ToString('0.##', $invariant) }
+        'pitch' { if ($Position -gt 0) { "+$Position%" } else { "$Position%" } }
+        'volume' { "$Position" }
+        default { throw "No slider for '$Name'." }
+    }
+}
+
+function ConvertFrom-SliderText {
+    <# The slider position for a value typed in the box, or $null when the slider can't show it
+       (semitones, Hz, out of range, not a value): the box keeps it and the tool checks it. #>
+    param([Parameter(Mandatory)] [string] $Name, [string] $Text)
+    $spec = $script:Sliders[$Name]
+    if (-not $spec) { throw "No slider for '$Name'." }
+    $value = ([string] $Text).Trim().ToLowerInvariant()
+    if (-not $value) { return $null }
+    $number = '([+-]?\d+(?:\.\d+)?)'
+    $invariant = [cultureinfo]::InvariantCulture
+    $position = $null
+    if ($spec.Named.ContainsKey($value)) { $position = $spec.Named[$value] }
+    elseif ($value -match "^$number%$") {
+        $percent = [double]::Parse($Matches[1], $invariant)
+        $position = switch ($Name) { 'pitch' { $percent } default { $spec.Normal * (1 + $percent / 100) } }
+    }
+    elseif ($value -match "^$number$") {
+        $parsed = [double]::Parse($Matches[1], $invariant)
+        $signed = $Matches[1] -match '^[+-]'
+        $position = switch ($Name) {
+            'rate' { if ($signed) { $null } else { $parsed * 100 } }
+            'volume' { if ($signed) { $spec.Normal + $parsed } else { $parsed } }  # +N/-N: from the normal 100
+            default { $null }
+        }
+    }
+    if ($null -eq $position) { return $null }
+    $rounded = [int] [math]::Round($position)
+    if ($rounded -lt $spec.Min -or $rounded -gt $spec.Max) { return $null }
+    $rounded
 }
 
 function New-TuningChoice {
@@ -243,8 +297,11 @@ function Show-TuningWindow {
     Add-Row 'Voice profile' $profileBox
     Add-Row '' $profileInfo -Wide
 
-    # Settings: empty means the profile's value, shown greyed in the box.
+    # Settings: empty means the profile's value, shown greyed in the box. Rate, pitch and volume
+    # also get a slider: moving it writes the value in the box; a value typed that it can show
+    # moves it; an empty box puts it at the profile's value (or normal).
     $settingBoxes = [ordered]@{}
+    $sliders = @{}
     foreach ($name in $script:SettingNames) {
         $box = [System.Windows.Forms.TextBox]::new()
         if ($name -eq 'instructions') {
@@ -254,7 +311,40 @@ function Show-TuningWindow {
         }
         $box.Text = [string] $Choice.Settings[$name]
         $settingBoxes[$name] = $box
-        Add-Row ((Get-Culture).TextInfo.ToTitleCase($name)) $box
+        $control = $box
+        if ($script:Sliders.Contains($name)) {
+            $spec = $script:Sliders[$name]
+            $slider = [System.Windows.Forms.TrackBar]::new()
+            $slider.Minimum = $spec.Min
+            $slider.Maximum = $spec.Max
+            $slider.Value = $spec.Normal
+            $slider.SmallChange = 1
+            $slider.LargeChange = $spec.Step
+            $slider.TickStyle = 'None'
+            # As tall as its box, so the row lines up with the others.
+            $slider.AutoSize = $false
+            $slider.Height = $box.PreferredHeight
+            $slider.Anchor = 'Left, Right'
+            $slider.Tag = $name
+            $sliders[$name] = $slider
+            $pair = [System.Windows.Forms.TableLayoutPanel]::new()
+            $pair.ColumnCount = 2
+            [void] $pair.ColumnStyles.Add([System.Windows.Forms.ColumnStyle]::new('Absolute', 120))
+            [void] $pair.ColumnStyles.Add([System.Windows.Forms.ColumnStyle]::new('Percent', 100))
+            $pair.AutoSize = $true
+            $pair.Margin = [System.Windows.Forms.Padding]::new(0)
+            $box.Anchor = 'Left, Right'
+            $pair.Controls.Add($box, 0, 0)
+            $pair.Controls.Add($slider, 1, 0)
+            $control = $pair
+            $slider.Add_Scroll({
+                    param($sender)
+                    $settingBoxes[$sender.Tag].Text = ConvertTo-SliderText -Name $sender.Tag -Position $sender.Value
+                })
+            $box.Tag = $name
+            $box.Add_TextChanged({ param($sender) Sync-Slider $sender.Tag })
+        }
+        Add-Row ((Get-Culture).TextInfo.ToTitleCase($name)) $control
     }
 
     # Run options
@@ -340,7 +430,24 @@ function Show-TuningWindow {
             elseif ($item.settings.PSObject.Properties[$name]) { Format-SettingValue $item.settings.$name }
             else { $null }
             $box.PlaceholderText = if ($own) { "profile: $own" } else { $script:SettingHints[$name] }
+            if ($sliders.ContainsKey($name)) {
+                $sliders[$name].Enabled = $box.Enabled
+                Sync-Slider $name
+            }
         }
+    }
+
+    function Sync-Slider([string] $Name) {
+        # The box's value, or else the profile's, or else normal; a value the slider can't show
+        # (semitones, Hz) leaves it where it is.
+        $slider = $sliders[$Name]
+        $text = $settingBoxes[$Name].Text
+        if (-not $text.Trim()) {
+            $item = $state.Profiles[[string] $profileBox.SelectedItem]
+            $text = if ($item -and $item.settings.PSObject.Properties[$Name]) { Format-SettingValue $item.settings.$Name } else { '' }
+        }
+        $position = if ($text.Trim()) { ConvertFrom-SliderText -Name $Name -Text $text } else { $script:Sliders[$Name].Normal }
+        if ($null -ne $position -and $slider.Value -ne $position) { $slider.Value = $position }
     }
 
     function Get-FormChoice {
@@ -451,4 +558,4 @@ function Show-TuningWindow {
 
 Export-ModuleMember -Function New-TuningChoice, ConvertTo-VoiceArguments, ConvertTo-NarrateArguments,
 Get-ToolErrorMessage, Invoke-FoundryTts, Read-TuningChoice, Save-TuningChoice, Format-SettingValue,
-Show-TuningWindow
+ConvertTo-SliderText, ConvertFrom-SliderText, Show-TuningWindow

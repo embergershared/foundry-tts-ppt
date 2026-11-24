@@ -62,6 +62,43 @@ try {
     Assert-Equal '0.6' (Format-SettingValue 0.6) 'a number is shown with a dot, even in fr-FR'
 }
 finally { [cultureinfo]::CurrentCulture = $french }
+$choice.Settings['volume'] = '80'
+Assert-True ((ConvertTo-VoiceArguments -Choice $choice) -contains '--volume=80') 'volume: --volume=80'
+
+# 1b. Sliders (issue #31): position -> value, and value -> position.
+Assert-Equal '1.2' (ConvertTo-SliderText -Name rate -Position 120) 'rate slider 120: multiplier 1.2'
+Assert-Equal '1' (ConvertTo-SliderText -Name rate -Position 100) 'rate slider 100: 1 (normal)'
+Assert-Equal '0.55' (ConvertTo-SliderText -Name rate -Position 55) 'rate slider 55: 0.55'
+Assert-Equal '+10%' (ConvertTo-SliderText -Name pitch -Position 10) 'pitch slider 10: +10%'
+Assert-Equal '-15%' (ConvertTo-SliderText -Name pitch -Position -15) 'pitch slider -15: -15%'
+Assert-Equal '0%' (ConvertTo-SliderText -Name pitch -Position 0) 'pitch slider 0: 0% (normal)'
+Assert-Equal '80' (ConvertTo-SliderText -Name volume -Position 80) 'volume slider 80: 80'
+try {
+    [cultureinfo]::CurrentCulture = 'fr-FR'
+    Assert-Equal '1.25' (ConvertTo-SliderText -Name rate -Position 125) 'rate slider: a dot, even in fr-FR'
+}
+finally { [cultureinfo]::CurrentCulture = $french }
+$cases = @(
+    @('rate', '1.2', 120), @('rate', '-5%', 95), @('rate', '+50%', 150), @('rate', 'slow', 64), @('rate', 'X-Fast', 200),
+    @('rate', '3', $null), @('rate', '+1', $null), @('rate', 'faster', $null),
+    @('pitch', '+10%', 10), @('pitch', '-20%', -20), @('pitch', 'high', 20), @('pitch', '+2st', $null), @('pitch', '200Hz', $null), @('pitch', '+80%', $null),
+    @('volume', '80', 80), @('volume', '-10', 90), @('volume', '-25%', 75), @('volume', 'soft', 40), @('volume', 'default', 100),
+    @('volume', '120', $null), @('volume', '+10', $null), @('volume', '', $null)
+)
+foreach ($case in $cases) {
+    $name, $text, $expected = $case
+    $actual = ConvertFrom-SliderText -Name $name -Text $text
+    Assert-True ($actual -eq $expected) "$name '$text' -> slider $(if ($null -eq $expected) { 'unchanged' } else { $expected })$(if ($actual -ne $expected) { " (got $actual)" })"
+}
+$ranges = @{ rate = 50..200; pitch = -50..50; volume = 0..100 }
+foreach ($name in 'rate', 'pitch', 'volume') {
+    $back = foreach ($position in $ranges[$name]) {
+        $text = ConvertTo-SliderText -Name $name -Position $position
+        $read = ConvertFrom-SliderText -Name $name -Text $text
+        if ($read -ne $position) { "$position->$text->$read" }
+    }
+    Assert-True (-not $back) "${name}: a slider's value moves it back to the same place$(if ($back) { " ($($back -join ', '))" })"
+}
 
 # 2. Error messages
 $lines = @(

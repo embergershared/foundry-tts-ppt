@@ -245,6 +245,8 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
   profile commands only JSON (logs on stderr), so keep it that way. The window repeats no voice
   rule: it asks `profile list` what each voice accepts and `profile check` whether a choice is
   valid, and passes settings as `--<name>=<value>` (a value like `-5%` would read as an option).
+  Rate, pitch and volume have sliders (`$script:Sliders`): the box is the value, the slider only
+  writes into it and follows it (`ConvertTo-SliderText` / `ConvertFrom-SliderText`).
   Its logic is tested by `tests/scripts/Test-DemoTuning.ps1` (local, not in CI); its last choices
   stay in `%LOCALAPPDATA%\foundry-tts-ppt\tuning.json`.
 - **Real decks are confidential:** never copy one, its notes, file name or audio into the repo,
