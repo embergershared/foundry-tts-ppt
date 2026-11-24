@@ -203,6 +203,14 @@ def test_sample_speaks_the_first_narrated_slide(local, client, transport, contos
     assert "Welcome to the Contoso cloud roadmap" in sent(transport)  # slide 1, cleaned
 
 
+def test_sample_of_a_deck_whose_name_ends_with_a_space(local, client, transport, tmp_path):
+    """Issue #39: the sample failed with FileNotFoundError on 'Contoso review .pptx'."""
+    spaced = make_deck(tmp_path / "Contoso review .pptx")
+    path = deck(["sample", str(spaced)], local, client)
+    assert path == tmp_path / "output" / "Contoso review" / "sample.mp3"
+    assert path.read_bytes() == FAKE_AUDIO
+
+
 def test_sample_of_a_chosen_slide_even_hidden(local, client, transport, contoso):
     deck(["sample", str(contoso), "--slide", "3"], local, client)
     assert "backup slide only" in sent(transport)

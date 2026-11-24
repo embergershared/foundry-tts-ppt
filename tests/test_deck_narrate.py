@@ -176,6 +176,28 @@ def test_narrate_makes_the_audio_then_the_narrated_copy(
     ]
 
 
+def test_narrate_a_deck_whose_name_ends_with_a_space(
+    local, client, transport, fake_narrate, tmp_path
+):
+    """Issue #39: the audio went to 'output/<name >/', which Windows made as 'output/<name>/'."""
+    spaced = make_deck(tmp_path / "Contoso review .pptx")
+    out = run(["narrate", str(spaced), "--auto-advance"], local, client)
+
+    folder = tmp_path / "output" / "Contoso review"
+    assert out == folder / "Contoso review.narrated.pptx"
+    assert out.exists()
+    (call,) = fake_narrate
+    assert [n.audio for n in call["narrations"]] == [
+        folder / "slide-01.mp3",
+        folder / "slide-04.mp3",
+    ]
+    assert all(n.audio.exists() for n in call["narrations"])
+    # A rerun finds the same folder and its audio: no new Azure call.
+    transport.requests.clear()
+    assert run(["synth", str(spaced)], local, client) == folder / "manifest.json"
+    assert transport.requests == []
+
+
 def test_skip_synth_reuses_the_manifest_without_azure(
     local, client, transport, contoso, fake_narrate, tmp_path
 ):

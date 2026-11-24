@@ -18,9 +18,38 @@ log = logging.getLogger(__name__)
 
 NARRATED_SUFFIX = ".narrated.pptx"
 VIDEO_SUFFIX = ".narrated.mp4"
-# Dropped from the end of a shortened name: Windows ignores trailing dots and spaces, and a
-# dangling "-" or "_" reads as a mistake.
+# Dropped from the end of every deck name: Windows drops them from a folder's name when it creates
+# it, so a path that keeps them points to a folder that doesn't exist (issue #39).
+_WINDOWS_TRAILING = " ."
+# Dropped from the end of a shortened name: those, and a dangling "-" or "_" reads as a mistake.
 _TRAILING = " .-_"
+# The name used when a deck's name is only dots and spaces.
+_FALLBACK_NAME = "deck"
+# Device names Windows reserves: a folder can't have one of them as its whole name
+# (https://learn.microsoft.com/windows/win32/fileio/naming-a-file).
+_RESERVED = frozenset(
+    ["CON", "PRN", "AUX", "NUL"]
+    + [f"{device}{n}" for device in ("COM", "LPT") for n in [*"123456789", "¹", "²", "³"]]
+)
+_RESERVED_MARK = "_"
+
+
+def deck_name(deck_path: Path) -> str:
+    """The deck's file name without .pptx, as Windows can name a folder or a file with it.
+
+    Windows drops trailing spaces and dots when it creates a folder, and refuses a reserved
+    device name (CON, NUL, COM1, ...); the name is changed the same way every time, so reruns
+    find their files.
+    """
+    name = deck_path.stem.rstrip(_WINDOWS_TRAILING) or _FALLBACK_NAME
+    if name.upper() in _RESERVED:
+        name += _RESERVED_MARK
+    if name != deck_path.stem:
+        log.debug(
+            "The deck's name was changed for a Windows folder name.",
+            extra={"deck_name": deck_path.stem, "folder_name": name},
+        )
+    return name
 
 
 def path_chars(path: Path) -> int:
@@ -94,9 +123,9 @@ def default_folder(deck_path: Path, settings: Settings) -> Path:
     limits = settings.deck
     root = settings.output_folder
     after = len(os.sep) + limits.min_name_chars + len(NARRATED_SUFFIX)
-    return root / _fitted(root, deck_path.stem, "", after, limits)
+    return root / _fitted(root, deck_name(deck_path), "", after, limits)
 
 
 def output_file(deck_path: Path, folder: Path, suffix: str, limits: DeckSettings) -> Path:
     """folder/<deck name><suffix>, the name shortened to stay within max_path_chars."""
-    return folder / f"{_fitted(folder, deck_path.stem, suffix, 0, limits)}{suffix}"
+    return folder / f"{_fitted(folder, deck_name(deck_path), suffix, 0, limits)}{suffix}"
