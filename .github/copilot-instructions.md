@@ -220,7 +220,9 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
   paths on, and cuts a longer name without an error, so long deck names are shortened.
   `foundry-tts deck sample` speaks one slide (`deck_synth.sample_slide`); `foundry-tts profile
   list|check|save` print JSON for scripts (`profile save` appends `[profiles.<name>]` as text, so
-  the file's comments stay). `cli.py` (options, flow; `OVERRIDES` are the profile settings with a
+  the file's comments stay); `foundry-tts voice list` (`voices.py`, `engines.list_speech_voices`)
+  lists the voices the resource offers from Speech's `/cognitiveservices/voices/list` (`--json` for
+  scripts; `[speech] voices_endpoint_template`). `cli.py` (options, flow; `OVERRIDES` are the profile settings with a
   `--<name>` option), `config.py` (the only reader of `foundry-tts.toml` and the `FOUNDRY_*`
   variables / `.env`, and the only writer of `foundry-tts.toml`), `engines.py` (REST calls with
   `httpx`), `profiles.py` (voice profiles, voice families and what each honors),
@@ -245,6 +247,8 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
   profile commands only JSON (logs on stderr), so keep it that way. The window repeats no voice
   rule: it asks `profile list` what each voice accepts and `profile check` whether a choice is
   valid, and passes settings as `--<name>=<value>` (a value like `-5%` would read as an option).
+  Its **Pick…** button reads `voice list --json` once and opens a voice picker (`Show-VoicePicker`;
+  sizes scaled by `DeviceDpi / 96`).
   Its logic is tested by `tests/scripts/Test-DemoTuning.ps1` (local, not in CI); its last choices
   stay in `%LOCALAPPDATA%\foundry-tts-ppt\tuning.json`.
 - **Real decks are confidential:** never copy one, its notes, file name or audio into the repo,

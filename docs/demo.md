@@ -17,7 +17,7 @@ It opens first, filled in with the last run's choices (kept on this PC in
 |---|---|
 | **Deck** | The .pptx to narrate (**Browse…** opens a file picker) |
 | **Voice profile** | A profile from `foundry-tts.toml`; the line under it shows its engine, voice and voice family |
-| **Voice** … **Instructions** | Change one setting for this run. An empty box keeps the profile's value, shown greyed in it. Boxes the profile's voice doesn't accept are off: temperature for voices that aren't Dragon HD, the speech settings for an openai profile, and instructions for a speech one |
+| **Voice** … **Instructions** | Change one setting for this run. **Pick…** next to Voice lists every Azure Speech voice the resource offers (the first click asks Azure, a second or two): search by name or style, filter by language, gender and family, and **Use this voice** fills the box. Once the list is read, the line under Style shows the styles the chosen voice knows, and the Style box completes them. Pick… is off for an openai profile. An empty box keeps the profile's value, shown greyed in it. Boxes the profile's voice doesn't accept are off: temperature for voices that aren't Dragon HD, the speech settings for an openai profile, and instructions for a speech one |
 | **Run** | Auto-advance (on), export an MP4 video (also turns auto-advance on), start the Slide Show |
 | **Listen to a sample** | Speaks the first slide the deck would narrate, with the settings as they are, and plays it. One Azure call: a fraction of a cent |
 | **Save as profile…** | Adds the profile with these settings to `foundry-tts.toml` under a new name, and selects it. Commit it if the team should have it; an existing name is refused |
