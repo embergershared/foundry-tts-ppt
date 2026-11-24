@@ -246,7 +246,9 @@ Text-to-speech narration for PowerPoint decks with Microsoft Foundry
   rule: it asks `profile list` what each voice accepts and `profile check` whether a choice is
   valid, and passes settings as `--<name>=<value>` (a value like `-5%` would read as an option).
   Its logic is tested by `tests/scripts/Test-DemoTuning.ps1` (local, not in CI); its last choices
-  stay in `%LOCALAPPDATA%\foundry-tts-ppt\tuning.json`.
+  stay in `%LOCALAPPDATA%\foundry-tts-ppt\tuning.json`. It plays the sample with MCI
+  (`winmm.dll`), never a WPF `MediaPlayer`: creating one makes a DPI-unaware process DPI-aware,
+  and on a scaled display the window's text then overflows its layout (issue #29).
 - **Real decks are confidential:** never copy one, its notes, file name or audio into the repo,
   an issue, a PR or a commit. Read one only locally (`FOUNDRY_TTS_ACCEPTANCE_DECK`).
 - **Prototype:** `src/powershell-prototype/` narrates a deck through PowerPoint COM (Windows);
