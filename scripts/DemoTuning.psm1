@@ -153,6 +153,51 @@ function Save-TuningChoice {
     $Choice | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $Path -Encoding utf8
 }
 
+# The sample is played with Windows' MCI (winmm.dll), not WPF: loading WPF makes a process that
+# hasn't declared its DPI mode DPI-aware, and a window laid out before that then draws its text
+# at 150% in its 100% layout, cut off (issue #29). MCI doesn't touch the DPI mode.
+$script:SampleAlias = 'foundry_tts_sample'
+
+function Invoke-Mci {
+    <# Sends one MCI command; throws with MCI's message when it fails. #>
+    param([Parameter(Mandatory)] [string] $Command)
+    if (-not ('FoundryTts.Mci' -as [type])) {
+        Add-Type -Namespace FoundryTts -Name Mci -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("winmm.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+public static extern int mciSendString(string command, System.Text.StringBuilder result, int length, System.IntPtr callback);
+[System.Runtime.InteropServices.DllImport("winmm.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+public static extern bool mciGetErrorString(int error, System.Text.StringBuilder text, int length);
+'@
+    }
+    $result = [System.Text.StringBuilder]::new(256)
+    $code = [FoundryTts.Mci]::mciSendString($Command, $result, $result.Capacity, [IntPtr]::Zero)
+    if ($code -ne 0) {
+        $text = [System.Text.StringBuilder]::new(256)
+        [void] [FoundryTts.Mci]::mciGetErrorString($code, $text, $text.Capacity)
+        throw "MCI '$Command' failed ($code): $text"
+    }
+    $result.ToString()
+}
+
+function Start-SamplePlayback {
+    <# Plays an MP3 or WAV file in the background; a sample still playing is closed first. #>
+    param([Parameter(Mandatory)] [string] $Path)
+    Stop-SamplePlayback
+    $type = if ([System.IO.Path]::GetExtension($Path) -eq '.wav') { 'waveaudio' } else { 'mpegvideo' }
+    [void] (Invoke-Mci "open `"$Path`" type $type alias $script:SampleAlias")
+    [void] (Invoke-Mci "play $script:SampleAlias")
+}
+
+function Stop-SamplePlayback {
+    <# Stops the sample and releases its file, so the next sample can replace it. #>
+    try { [void] (Invoke-Mci "close $script:SampleAlias") } catch { }  # nothing open: nothing to do
+}
+
+function Get-SamplePlaybackMode {
+    <# playing, stopped, … or $null when no sample is open (for tests). #>
+    try { Invoke-Mci "status $script:SampleAlias mode" } catch { $null }
+}
+
 function Format-SettingValue {
     <# A profile setting as the window shows it: numbers with a dot, whatever the culture. #>
     param($Value)
@@ -344,7 +389,7 @@ function Show-TuningWindow {
     $state = @{
         Profiles = @{}
         Default  = $null
-        Player   = $null
+        Player   = $false
         Result   = $null
         Voices   = $null  # foundry-tts voice list, read the first time Pick… is clicked
     }
@@ -581,17 +626,15 @@ function Show-TuningWindow {
     function Stop-Sample {
         # The player keeps the file open: it is closed before the next sample replaces it.
         if ($state.Player) {
-            $state.Player.Close()
-            $state.Player = $null
+            Stop-SamplePlayback
+            $state.Player = $false
         }
     }
 
     function Start-Sample([string] $Path) {
         try {
-            Add-Type -AssemblyName PresentationCore
-            $state.Player = [System.Windows.Media.MediaPlayer]::new()
-            $state.Player.Open([uri]::new($Path))
-            $state.Player.Play()
+            Start-SamplePlayback -Path $Path
+            $state.Player = $true
         }
         catch {
             # No in-window player: the default audio app plays it.
@@ -675,4 +718,4 @@ function Show-TuningWindow {
 Export-ModuleMember -Function New-TuningChoice, ConvertTo-VoiceArguments, ConvertTo-NarrateArguments,
 Get-ToolErrorMessage, Invoke-FoundryTts, Read-TuningChoice, Save-TuningChoice, Format-SettingValue,
 ConvertFrom-VoiceListing, Select-TuningVoice, Get-VoiceFilterValues, Find-TuningVoice, Show-VoicePicker,
-Show-TuningWindow
+Start-SamplePlayback, Stop-SamplePlayback, Get-SamplePlaybackMode, Show-TuningWindow
