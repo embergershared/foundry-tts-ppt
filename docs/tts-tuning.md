@@ -55,7 +55,7 @@ temperature = 0.7
 | `engine` | both | `speech` (Azure Speech voices) or `openai` (the `gpt-4o-mini-tts` deployment) |
 | `voice` | both | Speech voice name, or an openai voice: alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin, cedar |
 | `language` | speech | SSML language (default `[speech] language`) |
-| `style` | speech | `<mstts:express-as style>`. MAI Harper, Grant, Sage: `narrator`, `educational`, `audiobook`; HD voices: `calm`, `confident`, `excited`, … ([lists](https://learn.microsoft.com/azure/ai-services/speech-service/high-definition-voices)). The names a voice knows aren't checked |
+| `style` | speech | `<mstts:express-as style>`. MAI Harper, Grant, Sage: `narrator`, `educational`, `audiobook`; HD voices: `calm`, `confident`, `excited`, … ([voice-styles.md](voice-styles.md#styles)). The names a voice knows aren't checked |
 | `rate`, `pitch` | speech | `<prosody>`: `"-5%"`, `"slow"`; `"+2st"`, `"-10Hz"`, `"low"` |
 | `temperature` | speech, HD voices only | 0 to 1; lower is steadier from slide to slide (default 1.0 for Dragon HD) |
 | `instructions` | openai | Plain-English direction of tone, pace and emotion |
@@ -101,7 +101,7 @@ For a deck's own words, keep a separate file with a `[lexicon]` table and add it
 | `// note to self` (a whole line) | Not spoken |
 | `[pause 1s]`, `[pause 750ms]`, `[pause 1.5s]` | A pause (at most 20 s); the openai engine gets "..." instead |
 | A new paragraph (new line) | A pause of `[speech] paragraph_break_ms` (400 ms) |
-| `[excited] Great news!` | Left as is: HD voices read a style word in brackets as a style tag |
+| `[excited] Great news!`, `[laughter]` | Left as is: HD voices read a style or sound effect in brackets as a tag (full list: [voice-styles.md](voice-styles.md)) |
 
 Stress (`*word*`) isn't offered: Azure's `<emphasis>` works on three standard voices only, none of
 the HD or MAI voices.
