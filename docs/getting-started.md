@@ -78,7 +78,7 @@ Get-Content .\notes.txt | .venv\Scripts\foundry-tts --profile marin-presenter
 |---|---|
 | `--text`, `--file`, `--ssml`, or a pipe | The text to say (a file is read as UTF-8). `--ssml` sends a hand-written SSML file as is (speech profiles only) |
 | `--profile <name>` | The voice profile from `foundry-tts.toml` (default `andrew-hd`, a male voice). Repeat it to compare profiles: one file each. `--list-profiles` lists them |
-| `--voice`, `--language`, `--style`, `--rate`, `--pitch`, `--temperature`, `--instructions` | Override the profile for this run, checked by the same rules as a profile ([tts-tuning.md](tts-tuning.md)): `--instructions` for openai profiles, the others for speech ones, `--temperature` for HD voices only. A value that starts with `-` needs the `=` form: `--rate=-5%` |
+| `--voice`, `--language`, `--style`, `--rate`, `--pitch`, `--volume`, `--temperature`, `--instructions` | Override the profile for this run, checked by the same rules as a profile ([tts-tuning.md](tts-tuning.md)): `--instructions` for openai profiles, the others for speech ones, `--temperature` for HD voices only. `--rate` also takes a multiplier (`1.2`); `--volume` is 0 to 100 (100 is normal) or relative. A value that starts with `-` needs the `=` form: `--rate=-5%`, `--volume=-10` |
 | `--lexicon <file>` | Adds a deck's own pronunciation list (a `[lexicon]` table) to the settings file's |
 | `--out`, `--overwrite` | Where the audio goes (default: `output\<time>-<profile>.mp3`, gitignored; a folder when comparing profiles); existing files are kept unless `--overwrite` |
 | `--save-ssml` | Also saves the SSML sent to Speech next to the audio, to reuse or tune it |

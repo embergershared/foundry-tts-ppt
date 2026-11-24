@@ -58,6 +58,13 @@ def test_only_the_prosody_attributes_that_are_set():
     assert prosody.attrib == {"rate": "slow"}
 
 
+def test_volume_and_a_rate_multiplier_go_in_the_prosody():
+    prosody = ET.fromstring(build("Hi", rate="1.2", volume="80")).find(f"{NS}voice/{NS}prosody")
+    assert prosody.attrib == {"rate": "1.2", "volume": "80"}
+    alone = ET.fromstring(build("Hi", volume="soft")).find(f"{NS}voice/{NS}prosody")
+    assert alone.attrib == {"volume": "soft"}
+
+
 def test_lexicon_words_become_sub_elements():
     voice = ET.fromstring(build("Run AKS now", lexicon={"AKS": "A K S"})).find(f"{NS}voice")
     sub = voice.find(f"{NS}sub")

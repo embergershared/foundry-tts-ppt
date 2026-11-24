@@ -45,7 +45,16 @@ log = logging.getLogger("foundry_tts")
 DECK_COMMAND = "deck"
 PROFILE_COMMAND = "profile"
 # Profile settings the command line can override, as --<name>.
-OVERRIDES = ("voice", "language", "style", "rate", "pitch", "temperature", "instructions")
+OVERRIDES = (
+    "voice",
+    "language",
+    "style",
+    "rate",
+    "pitch",
+    "volume",
+    "temperature",
+    "instructions",
+)
 
 
 def _add_voice_options(parser: argparse.ArgumentParser, *, several: bool) -> None:
@@ -67,9 +76,13 @@ def _add_voice_options(parser: argparse.ArgumentParser, *, several: bool) -> Non
     # A value starting with "-" needs the = form (--rate=-5%), or argparse reads it as an option.
     parser.add_argument(
         "--rate",
-        help="Speaking rate, e.g. --rate=-5%%, +10%% or slow (speech profiles).",
+        help="Speaking rate: a multiplier (1.2), --rate=-5%%, +10%% or slow (speech profiles).",
     )
     parser.add_argument("--pitch", help="Pitch, e.g. +2st, --pitch=-5%% or low (speech profiles).")
+    parser.add_argument(
+        "--volume",
+        help="Volume: 0 to 100 (default 100), --volume=-10, +5%% or soft (speech profiles).",
+    )
     parser.add_argument(
         "--temperature",
         type=float,

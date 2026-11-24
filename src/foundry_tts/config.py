@@ -154,6 +154,7 @@ _PROFILE_OPTIONAL = {
     "style": str,
     "rate": str,
     "pitch": str,
+    "volume": str,
     "temperature": float,
     "instructions": str,
 }
