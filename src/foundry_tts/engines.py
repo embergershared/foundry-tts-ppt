@@ -114,6 +114,34 @@ def synthesize_speech(
     return _check_response(response, "Azure Speech")
 
 
+def list_speech_voices(
+    settings: Settings, client: httpx.Client, get_token: TokenProvider
+) -> list[dict]:
+    """Azure Speech: the voices the resource offers, as its voice list API returns them."""
+    url = settings.speech_voices_url()
+    log.info("Listing the Azure Speech voices.", extra={"url": url})
+    try:
+        response = client.get(
+            url,
+            headers={
+                "Authorization": f"Bearer aad#{settings.speech_resource_id()}#{get_token()}",
+                "User-Agent": settings.http.user_agent,
+            },
+        )
+    except httpx.HTTPError as error:
+        raise TtsError(f"Could not reach Azure Speech at {url}: {error}") from error
+    if response.status_code != httpx.codes.OK:
+        detail = response.text[:ERROR_BODY_CHARS].strip() or response.reason_phrase
+        raise TtsError(f"Azure Speech returned HTTP {response.status_code} for {url}: {detail}")
+    try:
+        voices = response.json()
+    except ValueError as error:
+        raise TtsError(f"Azure Speech returned a voice list that isn't JSON: {error}") from error
+    if not isinstance(voices, list):
+        raise TtsError("Azure Speech returned a voice list that isn't a JSON array.")
+    return voices
+
+
 def openai_body(text: str, *, voice: str, instructions: str, settings: Settings) -> str:
     """The JSON body of one gpt-4o-mini-tts request (sent as is, so it can be hashed)."""
     limit = settings.openai.max_input_chars
