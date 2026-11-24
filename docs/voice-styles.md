@@ -20,7 +20,7 @@ With an HD voice, a word in square brackets at the start of a sentence sets its 
 | Language | Styles work on **English** text only. Sound effects work in all languages on Dragon HD Omni. |
 | Placement | One tag at the start of each sentence you want to color. Write the tag in lower case, as listed below. |
 | It's a hint | The model applies a style only when it fits the meaning of the sentence: `[happy]` on sad news may barely change anything. Listen to the result. |
-| In this tool | Brackets reach the voice unchanged, except `[pause 1s]` ([tts-tuning.md](tts-tuning.md#4-markup-in-the-text)). They work in `--text`, `--file` and speaker notes. |
+| In this tool | Brackets reach the voice unchanged, except `[pause 1s]` ([tts-tuning.md](tts-tuning.md#5-markup-in-the-text)). They work in `--text`, `--file` and speaker notes. |
 | Whole slide | To give a whole request one style, use the profile setting `style` (`<mstts:express-as>`) instead of a tag on every sentence. |
 
 ### Styles

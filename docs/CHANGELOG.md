@@ -7,6 +7,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- `foundry-tts voice list`: every Azure Speech voice the resource offers (over a thousand, MAI-Voice and Dragon HD included), with its gender, family, model, status and styles, filtered by `--language`, `--gender`, `--family` and `--search`; `--json` for scripts. The demo's tuning window gets a **Pick…** button next to Voice that searches and filters that list, and shows the styles of the chosen voice under Style (#30).
 - `docs/voice-styles.md`: every style tag and sound effect for Dragon HD and Dragon HD Omni voices, presentation-friendly picks, and how to make a personal or professional custom voice (#32).
 - Demo launcher: a tuning window opens first, with the last run's choices, to pick the deck, the voice profile and its settings, and the run options (auto-advance, MP4, Slide Show); it plays a one-slide sample, saves the settings as a new profile, and checks them before narrating. `-SkipTuning` keeps the file picker (#27).
 - `foundry-tts`: `--style`, `--rate`, `--pitch` and `--temperature` override a profile for one run, as `--voice` does; `deck sample` speaks one slide to try a voice on a deck; `profile list|check|save` give the profiles as JSON and save a new one in `foundry-tts.toml` (#27).

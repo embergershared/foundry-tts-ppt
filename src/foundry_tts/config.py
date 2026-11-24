@@ -16,6 +16,9 @@ from foundry_tts.profiles import Profile, validate
 
 DEFAULT_CONFIG_FILE = "foundry-tts.toml"
 DEFAULT_ENV_FILE = ".env"
+# The paths of the text to speech and voice list APIs of an Azure Speech endpoint.
+_SPEECH_PATH = "/cognitiveservices/v1"
+_VOICES_PATH = "/cognitiveservices/voices/list"
 
 
 @dataclass(frozen=True)
@@ -24,6 +27,7 @@ class SpeechSettings:
     output_format: str
     paragraph_break_ms: int
     endpoint_template: str
+    voices_endpoint_template: str
     max_chars_per_request: int
 
 
@@ -97,6 +101,19 @@ class Settings:
             return self.azure.speech_endpoint
         region = _required(self.azure.region, "FOUNDRY_REGION", "speech")
         return self.speech.endpoint_template.format(region=region)
+
+    def speech_voices_url(self) -> str:
+        """The voice list URL: next to FOUNDRY_SPEECH_ENDPOINT if set, else the regional one."""
+        if self.azure.speech_endpoint:
+            endpoint = self.azure.speech_endpoint.rstrip("/")
+            if not endpoint.endswith(_SPEECH_PATH):
+                raise TtsError(
+                    f"FOUNDRY_SPEECH_ENDPOINT doesn't end with {_SPEECH_PATH}, so the voice list "
+                    "URL can't be found from it. Unset it to use the regional endpoint."
+                )
+            return endpoint.removesuffix(_SPEECH_PATH) + _VOICES_PATH
+        region = _required(self.azure.region, "FOUNDRY_REGION", "speech")
+        return self.speech.voices_endpoint_template.format(region=region)
 
     def speech_resource_id(self) -> str:
         return _required(self.azure.resource_id, "FOUNDRY_RESOURCE_ID", "speech")
@@ -242,6 +259,9 @@ def load_settings(
             output_format=_value(speech, "output_format", str, where("speech")),
             paragraph_break_ms=_value(speech, "paragraph_break_ms", int, where("speech")),
             endpoint_template=_value(speech, "endpoint_template", str, where("speech")),
+            voices_endpoint_template=_value(
+                speech, "voices_endpoint_template", str, where("speech")
+            ),
             max_chars_per_request=_value(speech, "max_chars_per_request", int, where("speech")),
         ),
         openai=OpenAiSettings(

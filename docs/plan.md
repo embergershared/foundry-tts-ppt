@@ -248,7 +248,7 @@ SSML support differs by voice family
 A profile that sets something its voice doesn't support (temperature on a MAI-Voice voice, for
 example) is refused with a clear error when it's loaded, rather than sent and silently ignored.
 Measured on 2026-11-11, `<prosody>` works on HD voices despite that table: see
-[tts-tuning.md](tts-tuning.md#5-what-each-voice-family-honors).
+[tts-tuning.md](tts-tuning.md#6-what-each-voice-family-honors).
 
 ## Open questions
 

@@ -30,6 +30,25 @@ def test_speech_endpoint_variable_replaces_the_regional_url():
     assert load_settings(CONFIG, env=env).speech_url() == "https://example.test/tts"
 
 
+def test_voices_url_is_built_from_the_region(settings):
+    assert settings.speech_voices_url() == (
+        "https://eastus2.tts.speech.microsoft.com/cognitiveservices/voices/list"
+    )
+
+
+def test_voices_url_sits_next_to_the_speech_endpoint_variable():
+    env = {**ENV, "FOUNDRY_SPEECH_ENDPOINT": "https://fdy.example.test/cognitiveservices/v1/"}
+    assert load_settings(CONFIG, env=env).speech_voices_url() == (
+        "https://fdy.example.test/cognitiveservices/voices/list"
+    )
+
+
+def test_voices_url_is_refused_when_the_speech_endpoint_has_another_path():
+    env = {**ENV, "FOUNDRY_SPEECH_ENDPOINT": "https://example.test/tts"}
+    with pytest.raises(TtsError, match="FOUNDRY_SPEECH_ENDPOINT doesn't end with"):
+        load_settings(CONFIG, env=env).speech_voices_url()
+
+
 def test_openai_url_has_no_double_slash(settings):
     assert settings.openai_speech_url() == (
         "https://fdy-test.openai.azure.com/openai/v1/audio/speech"
