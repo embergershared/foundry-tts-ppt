@@ -1,6 +1,9 @@
-"""Settings: the TOML files and the environment variables. The only module that reads either."""
+"""Settings: the TOML files and the environment variables. The only module that reads either, and
+the only one that writes the settings file (`save_profile`)."""
 
+import json
 import os
+import re
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
@@ -277,3 +280,71 @@ def load_settings(
         default_profile=default_profile,
         lexicon=_lexicon(data, config_path),
     )
+
+
+# A profile name is a TOML bare key, so [profiles.<name>] needs no quotes.
+_PROFILE_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
+_LEXICON_HEADER = "[lexicon]"
+_SAVED_COMMENT = "# Saved by foundry-tts profile save."
+
+
+def _profile_block(profile: Profile, newline: str) -> str:
+    # JSON strings and numbers are valid TOML basic strings and floats.
+    lines = [
+        _SAVED_COMMENT,
+        f"[profiles.{profile.name}]",
+        f"engine = {json.dumps(profile.engine)}",
+        f"voice = {json.dumps(profile.voice, ensure_ascii=False)}",
+        *(
+            f"{key} = {json.dumps(value, ensure_ascii=False)}"
+            for key, value in profile.settings().items()
+        ),
+    ]
+    return newline.join(lines) + newline + newline
+
+
+def _insert_at(lines: list[str]) -> int:
+    """Before the [lexicon] table and the comment lines just above it; else at the end."""
+    for index, line in enumerate(lines):
+        if line.strip() == _LEXICON_HEADER:
+            while index > 0 and lines[index - 1].lstrip().startswith("#"):
+                index -= 1
+            return index
+    return len(lines)
+
+
+def save_profile(config_path: Path, profile: Profile) -> None:
+    """Adds the profile to the settings file as [profiles.<name>], above its [lexicon] table.
+
+    The file is edited as text, so its comments and line endings stay. A name already in use is
+    refused: change an existing profile in the file itself. The file is read back, and put back
+    as it was if it doesn't give the same profile.
+    """
+    if not _PROFILE_NAME.match(profile.name):
+        raise TtsError(f"Profile name '{profile.name}' may only use letters, digits, '-' and '_'.")
+    validate(profile)
+    if profile.name in _profiles(_read_toml(config_path), config_path):
+        raise TtsError(
+            f"Profile '{profile.name}' already exists in {config_path}: choose another name, "
+            "or change it in the file."
+        )
+    original = config_path.read_text(encoding="utf-8", newline="")
+    newline = "\r\n" if "\r\n" in original else "\n"
+    lines = original.splitlines(keepends=True)
+    at = _insert_at(lines)
+    block = _profile_block(profile, newline)
+    if at == len(lines) and original and not original.endswith(("\n", "\r")):
+        block = newline + newline + block
+    config_path.write_text(
+        "".join(lines[:at]) + block + "".join(lines[at:]), encoding="utf-8", newline=""
+    )
+    try:
+        saved = _profiles(_read_toml(config_path), config_path).get(profile.name)
+    except TtsError:
+        saved = None
+    if saved != profile:
+        config_path.write_text(original, encoding="utf-8", newline="")
+        raise TtsError(
+            f"Profile '{profile.name}' didn't read back the same from {config_path}; "
+            "the file is unchanged."
+        )

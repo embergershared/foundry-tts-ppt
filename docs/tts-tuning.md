@@ -60,9 +60,15 @@ temperature = 0.7
 | `temperature` | speech, HD voices only | 0 to 1; lower is steadier from slide to slide (default 1.0 for Dragon HD) |
 | `instructions` | openai | Plain-English direction of tone, pace and emotion |
 
-`--voice`, `--language` and `--instructions` override the profile for one run. A profile that
-sets something its engine or voice doesn't support (temperature on a MAI-Voice voice, `style` on
-the openai engine, a rate like `slower`) is refused before anything is sent to Azure.
+Each setting has an option that overrides the profile for one run: `--voice`, `--language`,
+`--style`, `--rate`, `--pitch`, `--temperature`, `--instructions`. A value that starts with `-`
+needs the `=` form (`--rate=-5%`, `--pitch=-2st`). A profile, or an override, that sets something
+its engine or voice doesn't support (temperature on a MAI-Voice voice, `style` on the openai
+engine, a rate like `slower`) is refused before anything is sent to Azure.
+
+To tune by ear on a real deck, use the demo's tuning window ([demo.md](demo.md#the-tuning-window)):
+it changes these settings in boxes, speaks one slide with them (`foundry-tts deck sample`), and
+saves the result as a new profile (`foundry-tts profile save <name>`).
 
 ### Compare profiles
 

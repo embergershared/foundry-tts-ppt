@@ -27,6 +27,8 @@ MANIFEST_VERSION = 1
 SLIDE_PREFIX = "slide-"
 MIN_NUMBER_WIDTH = 2
 NO_NOTES = "no notes"
+# deck sample: the file name (before the audio extension) of the one-slide sample.
+SAMPLE = "sample"
 # Manifest key: the files deck narrate wrote (narrated copy, video), which a rerun may replace.
 NARRATED_OUTPUTS = "narrated_outputs"
 HIDDEN = "hidden"
@@ -277,6 +279,62 @@ def synth_deck(
         },
     )
     return manifest_path
+
+
+def sample_slide(
+    deck_path: Path,
+    *,
+    profile: Profile,
+    settings: Settings,
+    lexicon: Lexicon,
+    out: Path | None,
+    reader: str,
+    slide_number: int | None,
+    client: httpx.Client,
+    get_token: engines.TokenProvider,
+) -> Path:
+    """Speaks one slide's notes as deck synth would (default: the first it narrates).
+
+    For trying a voice and its settings on the deck before paying for all of it. The audio goes to
+    <out folder>/sample<extension>, replaced each time; deck synth never reads it.
+    """
+    slides, used_reader = deck.read_slides(deck_path, reader)
+    folder = out or output_names.default_folder(deck_path, settings)
+    # A slide asked for by number is spoken even when it is hidden.
+    jobs, _ = _jobs(
+        slides,
+        profile=profile,
+        settings=settings,
+        lexicon=lexicon,
+        folder=folder,
+        include_hidden=slide_number is not None,
+    )
+    if slide_number is not None:
+        jobs = [job for job in jobs if job.slide.number == slide_number]
+        if not jobs:
+            raise TtsError(
+                f"Slide {slide_number} of {deck_path} has no speaker notes to say "
+                f"(the deck has {len(slides)} slides)."
+            )
+    if not jobs:
+        raise TtsError(f"No slide of {deck_path} has speaker notes to say.")
+    job = jobs[0]
+    path = folder / f"{SAMPLE}{job.requests.extension}"
+    audio = speak.send(job.requests, settings=settings, client=client, get_token=get_token)
+    audio_file.write_audio(audio, path, overwrite=True)
+    log.info(
+        "Sample saved.",
+        extra={
+            "slide": job.slide.number,
+            "path": str(path.resolve()),
+            "reader": used_reader,
+            "seconds": audio_file.audio_duration_seconds(path),
+            "profile": profile.name,
+            "voice": profile.voice,
+            "settings": profile.settings(),
+        },
+    )
+    return path
 
 
 def _remove_stale(previous: dict | None, entries: list[dict], folder: Path) -> None:
