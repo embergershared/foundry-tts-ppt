@@ -263,6 +263,21 @@ def test_main_narrate_reports_errors(tmp_path, monkeypatch, caplog):
     assert "Deck not found" in caplog.text
 
 
+@pytest.mark.parametrize(
+    ("command", "made"), [("synth", "manifest.json"), ("narrate", "deck.narrated.pptx")]
+)
+def test_main_writes_only_the_result_path_on_stdout(tmp_path, monkeypatch, capsys, command, made):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli.engines, "azure_token_provider", lambda: fake_token)
+    monkeypatch.setattr(cli, "run_deck", lambda args, settings, **kwargs: Path("output", made))
+
+    code = cli.main(["deck", command, str(tmp_path / "deck.pptx"), "--config", str(CONFIG)])
+
+    assert code == 0
+    # Absolute, alone on stdout: scripts/Start-Demo.ps1 opens it.
+    assert capsys.readouterr().out == f"{tmp_path / 'output' / made}\n"
+
+
 # ---- phase 5: timings, video, reruns ----
 
 
